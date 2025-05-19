@@ -4,14 +4,20 @@ import time
 import argparse
 from ultralytics import YOLO
 import onnxruntime as ort
+import os
+
+# Get the absolute path to the directory where this script is located
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Go up two levels to the project root
+PROJECT_ROOT = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 
 def main():
     parser = argparse.ArgumentParser(description="Traffic monitoring with YOLO")
     parser.add_argument('--source', type=str, default=0, 
                         help='Source for detection (0 for webcam, or path to video file)')
-    parser.add_argument('--model', type=str, default='data/models/yolo11s.onnx',
+    parser.add_argument('--model', type=str, default=os.path.join(PROJECT_ROOT, 'data/models/yolo11s.onnx'),
                         help='Model path (ONNX or PT)')
-    parser.add_argument('--plate-model', type=str, default='data/models/plate_v8n.pt',
+    parser.add_argument('--plate-model', type=str, default=os.path.join(PROJECT_ROOT, 'data/models/plate_v8n.pt'),
                         help='Path to plate detection model (used when --plate is specified)')
     parser.add_argument('--conf', type=float, default=0.25, 
                         help='Confidence threshold for detections')
@@ -24,6 +30,11 @@ def main():
         args.model = args.plate_model
         print(f"Using plate detection model: {args.model}")
         
+    # Construct absolute path for model if a relative path was given via CLI
+    if not os.path.isabs(args.model):
+        args.model = os.path.join(PROJECT_ROOT, args.model)
+        print(f"Resolved model path to: {args.model}")
+    
     # Define the classes we're interested in (for COCO dataset)
     target_classes = ['person', 'car', 'motorcycle', 'bus', 'truck']
     
