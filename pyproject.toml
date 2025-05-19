@@ -17,3 +17,6 @@ platforms = ["linux-64", "win-64"]
 trafficmonitor = { path = ".", editable = true }
 
 [tool.pixi.tasks]
+
+[tool.pixi.dependencies]
+dill = ">=0.4.0,<0.5"
