@@ -39,12 +39,17 @@ def main():
     parser.add_argument(
         "--simplify",
         action="store_true",
-        help="Whether to simplify the ONNX model. Default is False."
+        help="Whether to simplify the ONNX model. Default is True."
     )
     parser.add_argument(
         "--dynamic",
         action="store_true",
         help="Whether to use dynamic axes. Default is False."
+    )
+    parser.add_argument(
+        "--nms",
+        action="store_true",
+        help="Whether to include NMS (Non-Maximum Suppression) in the exported model. Default is False."
     )
     parser.add_argument(
         "--output_path",
@@ -70,7 +75,9 @@ def main():
         export_args["simplify"] = True
     if args.dynamic:
         export_args["dynamic"] = True
-    
+    if args.nms:
+        export_args["nms"] = True
+        
     # If output_path is specified, pass it to the export function.
     # Ultralytics' export function has a 'path' argument.
     if args.output_path:

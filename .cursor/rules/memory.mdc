@@ -1,0 +1,13 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Keep all requirements tracked in REQUIREMENTS.md where all functional and non functional requirements are outlined in detail, keep it up to date at each user request.
+
+Keep all architecture design and deployment considerations tracked in ARCHITECTURE.md where each component technical requirement, area of responsabillity, compute, storage, interface toward other components and dependency to other components is defined in detail, keep it up to date at every change.
+
+Apply domain driven design, each domain is documented in a COMPONENT_{NAME}_DOCS.md which also list all the related classes and where to find them in the project files, it's your responsability to make sure it's up to date at the end of each task. 
+
+
+When testing put all bugs and missing features in GAP_ANALYSIS.md and create a unit test to isolate the behavior and prevent regressions, when a bug is resolved remove the entry from the gap analysis file, but keep the unit test.
