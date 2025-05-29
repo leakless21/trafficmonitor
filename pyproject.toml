@@ -20,3 +20,4 @@ trafficmonitor = { path = ".", editable = true }
 
 [tool.pixi.dependencies]
 dill = ">=0.4.0,<0.5"
+loguru = ">=0.7.3,<0.8"
