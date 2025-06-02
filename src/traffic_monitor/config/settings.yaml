@@ -1,0 +1,18 @@
+# Main configuration for the Traffic Monitoring System
+
+# Video source: can be a path to a video file or a camera index (e.g., 0 for default webcam)
+video_source: "path/to/your/test_video.mp4" # TODO: Change this to a real video or 0
+camera_id: "cam_01"
+
+# Service-specific configurations will be added below
+# e.g., frame_grabber, vehicle_detector, etc.
+
+frame_grabber:
+  fps_limit: 30 # Example, might not be used initially
+
+vehicle_detector:
+  model_path: "weights/vehicle_detector.pt"
+  conf_threshold: 0.5
+  # class_mapping will be defined here later
+
+# ... other services

@@ -1,6 +1,6 @@
 [project]
 authors = [{name = "lkless", email = "leakless21@gmail.com"}]
-name = "trafficmonitor"
+name = "traffic_monitor"
 requires-python = "< 3.12"
 version = "0.1.0"
 dependencies = ["opencv-python>=4.11.0.86,<5", "ultralytics>=8.3.135,<9", "onnx>=1.12.0,<1.18.0", "onnxslim>=0.1.53,<0.2", "onnxruntime>=1.22.0,<2"]
@@ -9,15 +9,20 @@ dependencies = ["opencv-python>=4.11.0.86,<5", "ultralytics>=8.3.135,<9", "onnx>
 build-backend = "hatchling.build"
 requires = ["hatchling"]
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/traffic_monitor"]
+
 [tool.pixi.workspace]
 channels = ["conda-forge"]
 platforms = ["linux-64", "win-64"]
 
 [tool.pixi.pypi-dependencies]
-trafficmonitor = { path = ".", editable = true }
+traffic_monitor = { path = ".", editable = true }
 
 [tool.pixi.tasks]
+start = "python -m src.traffic_monitor.main_supervisor"
 
 [tool.pixi.dependencies]
 dill = ">=0.4.0,<0.5"
 loguru = ">=0.7.3,<0.8"
+pyyaml = ">=6.0.2,<7"
