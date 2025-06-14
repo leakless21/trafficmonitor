@@ -8,7 +8,7 @@ def setup_logging():
     """
     logger.remove()
     logger.add(
-        sys.stderr,
+        sys.stderr, level="DEBUG",
         format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
                "<level>{level: <8}</level> | "
                "<cyan>{process.name: <15}</cyan> | "
