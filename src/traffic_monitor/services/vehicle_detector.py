@@ -7,32 +7,59 @@ from typing import Dict, Any
 import ultralytics
 import cv2
 import numpy as np
-import base64
 from loguru import logger
 
-from ..utils.logging_config import setup_logging
-from ..utils.config_loader import load_config
 from ..utils.custom_types import FrameMessage, VehicleDetectionMessage, Detection
+from ..utils.logging_config import setup_logging
 
 class VehicleDetector:
-    # Encapsulates the vehicle detection model and its configuration
+    """
+    Encapsulates the vehicle detection model and its configuration.
+    Handles loading the model, setting confidence thresholds, and processing detection results.
+    """
     def __init__(self, model_path: str, conf_threshold: float, class_mapping: dict[int, str]):
-        self.model = ultralytics.YOLO(model_path)
+        """
+        Initializes the VehicleDetector with the specified model, confidence threshold, and class mapping.
+
+        Args:
+            model_path (str): Path to the YOLO model weights.
+            conf_threshold (float): Confidence threshold for detections.
+            class_mapping (dict[int, str]): A dictionary mapping class IDs to class names.
+        """
+        try:
+            self.model = ultralytics.YOLO(model_path)
+            logger.info(f"[VehicleDetector] YOLO model loaded successfully from: {model_path}")
+        except Exception as e:
+            logger.exception(f"[VehicleDetector] Failed to load YOLO model from {model_path}: {e}")
+            raise # Re-raise the exception to propagate the error
+
         self.conf_threshold = conf_threshold
         self.class_mapping = class_mapping
-        logger.info(f"VehicleDetector initialized with model: {model_path}, conf_threshold: {conf_threshold}, class_mapping: {class_mapping}")
+        logger.info(f"[VehicleDetector] Initialized with conf_threshold: {conf_threshold}, class_mapping: {class_mapping}")
         
     def process_results(self, results) -> list[Detection]:
-        # Process YOLO results into a list of Detection objects
+        """
+        Processes the raw output from the YOLO model into a standardized list of Detection objects.
+
+        Args:
+            results: The raw detection results from the YOLO model.
+
+        Returns:
+            list[Detection]: A list of dictionaries, each representing a detected object.
+        """
         detections: list[Detection] = []
-        # Results can be a list of Detection objects or a single Detection object
+        # Ensure results are not empty and contain detectable objects
         if not results or not results[0]:
             return detections
+        
+        # Iterate through detected bounding boxes
         for box in results[0].boxes:
             class_id = int(box.cls)
-            if class_id in self.class_mapping: # Check if the class ID is in the class mapping
-                bbox = box.xyxy[0].tolist() # Get the bounding box coordinates
-                confidence = float(box.conf) # Get the confidence score
+            # Only consider detections for classes specified in the mapping
+            if class_id in self.class_mapping: 
+                bbox = box.xyxy[0].tolist() # Get bounding box coordinates [x1, y1, x2, y2]
+                confidence = float(box.conf) # Get detection confidence score
+                
                 detections_dict: Detection = {
                     "bbox_xyxy": bbox,
                     "confidence": confidence,
@@ -43,8 +70,18 @@ class VehicleDetector:
         return detections
 
     def detect(self, frame: np.ndarray) -> list[Detection]:
-        # Detect vehicles in the frame
+        """
+        Performs vehicle detection on a given frame.
+
+        Args:
+            frame (np.ndarray): The input image frame as a NumPy array.
+
+        Returns:
+            list[Detection]: A list of detected objects.
+        """
+        # Run YOLO prediction on the frame with the specified confidence threshold
         results = self.model.predict(frame, conf=self.conf_threshold, verbose=False)
+        # Process the raw results into a structured list of detections
         processed_results = self.process_results(results)
         return processed_results
     
@@ -54,52 +91,72 @@ def vehicle_detector_process(
         output_queue: Queue,
         shutdown_event: Event
 ):
+    print(f"[VehicleDetectorProcess] Process starting...") # Very early print for debugging
     """
-    Main functions for the vehicle detector process.
-    - Get frames
-    - Detect vehicles
-    - Put the results in the output queue
+    Main process function for the vehicle detection service.
+
+    This function continuously reads frames from the input queue, performs vehicle detection
+    using the VehicleDetector, and puts the detection results into the output queue.
+    It gracefully handles shutdown signals and manages queue operations.
+
+    Args:
+        config (Dict[str, Any]): Configuration dictionary for the detector.
+        input_queue (Queue): Queue to receive FrameMessage objects.
+        output_queue (Queue): Queue to send VehicleDetectionMessage objects.
+        shutdown_event (Event): An event to signal the process to shut down.
     """
+    setup_logging(config.get("loguru")) # Initialize logging for this process
     process_name = mp.current_process().name
     logger.info(f"[{process_name}] Vehicle Detector process started.")
 
-    # 1. Extract configuration
     try:
+        # Load configuration parameters for the detector
         model_path = config.get("model_path")
         conf_threshold = config.get("conf_threshold", 0.5)
         class_mapping = {int(k): v for k, v in config.get("class_mapping", {}).items()}
+        
+        # Validate essential configuration parameters
         if not model_path or not conf_threshold or not class_mapping:
             logger.error(f"[{process_name}] Invalid configuration. model_path: {model_path}, conf_threshold: {conf_threshold}, class_mapping: {class_mapping}")
-            return
+            return # Exit if configuration is invalid
     
-        # 2. Initialize the vehicle detector
-        vehicle_detector = VehicleDetector(model_path, conf_threshold, class_mapping)
+        # Initialize the vehicle detector instance
+        try:
+            logger.info(f"[{process_name}] Initializing vehicle detector with model: {model_path}, conf_threshold: {conf_threshold}, class_mapping: {class_mapping}")
+            vehicle_detector = VehicleDetector(model_path, conf_threshold, class_mapping)
+            logger.info(f"[{process_name}] Vehicle detector initialized.")
+        except Exception as e:
+            logger.exception(f"[{process_name}] Failed to initialize VehicleDetector: {e}")
+            return # Exit if initialization fails
         
         while not shutdown_event.is_set():
-            # 3. Get a frame from the input queue
+            logger.debug(f"[{process_name}] Attempting to get frame from input queue...")
             try:
+                # Attempt to get a frame message from the input queue with a timeout
                 frame_message: FrameMessage = input_queue.get(timeout=1)
-                # 3.1 Check if the frame is None
+                logger.debug(f"[{process_name}] Received frame {frame_message.get('frame_id')} from input queue.")
             except Empty:
+                # If the queue is empty, continue to the next iteration
+                logger.trace(f"[{process_name}] Input queue is empty. Waiting for frames.")
                 continue
 
-            # 4. Shutdown the process if the frame is None
+            # Check for a None message, which indicates a shutdown signal from the upstream process
             if frame_message is None:
-                logger.warning("Received None frame message. Shutting down.")
-                output_queue.put(None)
+                logger.warning(f"[{process_name}] Received None frame message. Shutting down.")
+                output_queue.put(None) # Propagate shutdown signal to downstream processes
                 break
 
-            # 5. Get the frame data and decode it
-            jpeg_as_base64 = frame_message["frame_data_jpeg"]
-            jpeg_binary = base64.b64decode(jpeg_as_base64)
+            # Decode the JPEG binary frame data into an OpenCV image array
+            jpeg_binary = frame_message["frame_data_jpeg"]
             img_array = np.frombuffer(jpeg_binary, dtype=np.uint8)
             frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+            logger.debug(f"[{process_name}] Decoded frame {frame_message.get('frame_id')}. Performing detection...")
 
-            # 6. Detect vehicles
+            # Perform vehicle detection on the current frame
             detections = vehicle_detector.detect(frame)
             logger.debug(f"[{process_name}] Detected {len(detections)} vehicles in frame {frame_message['frame_id']}")
 
-            # 7. Augment the message with the detections
+            # Construct the output message with detection results
             output_message: VehicleDetectionMessage = {
                 "frame_id": frame_message["frame_id"],
                 "frame_width": frame_message["frame_width"],
@@ -109,14 +166,25 @@ def vehicle_detector_process(
                 "frame_data_jpeg": frame_message["frame_data_jpeg"],
                 "detections": detections
             }
-            # 8. Put the message in the output queue
+            
+            # Attempt to put the processed message into the output queue
             try:
                 output_queue.put(output_message)
             except Full:
+                # Log a warning if the output queue is full and drop the message
                 logger.warning(f"[{process_name}] Output queue is full. Dropping message.")
                 continue
     
+    except KeyboardInterrupt:
+        logger.info(f"[{process_name}] KeyboardInterrupt received. Shutting down.")
+        shutdown_event.set()
+        if not output_queue.full():
+            output_queue.put(None) # Propagate shutdown signal
     except Exception as e:
+        # Catch and log any unexpected exceptions that occur during the process
         logger.exception(f"[{process_name}] Vehicle Detector process crashed: {e}")
+        # Re-raise the exception to ensure the process truly terminates if needed
+        raise 
     finally:
+        # Log process completion upon normal shutdown or exception
         logger.info(f"[{process_name}] Vehicle Detector process finished.")

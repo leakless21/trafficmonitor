@@ -3,7 +3,7 @@ authors = [{name = "lkless", email = "leakless21@gmail.com"}]
 name = "traffic_monitor"
 requires-python = "< 3.12"
 version = "0.1.0"
-dependencies = ["opencv-python>=4.11.0.86,<5", "ultralytics>=8.3.135,<9", "onnx>=1.12.0,<1.18.0", "onnxslim>=0.1.53,<0.2", "onnxruntime>=1.22.0,<2"]
+dependencies = ["opencv-python>=4.11.0.86,<5", "ultralytics>=8.3.135,<9", "onnx>=1.12.0,<1.18.0", "onnxslim>=0.1.53,<0.2", "onnxruntime>=1.22.0,<2", "boxmot>=13.0.9,<14", "fast-plate-ocr>=0.3.0,<0.4"]
 
 [build-system]
 build-backend = "hatchling.build"

@@ -13,3 +13,19 @@ vehicle_detector:
     6: "bus"
     7: "train"
     8: "truck"
+
+vehicle_tracker:
+  tracker_type: "bytetrack"
+  half: false
+  device: "cpu"
+  reid_model_path: None
+  evolve_param_dict: None
+  per_class: None
+
+loguru:
+  level: "DEBUG"
+  format: "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{process.name: <15}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+
+lp_detector:
+  model_path: "data/models/plate_v8n.pt"
+  conf_threshold: 0.6
