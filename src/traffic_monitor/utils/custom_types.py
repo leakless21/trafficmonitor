@@ -47,8 +47,6 @@ class OCRResultMessage(TypedDict):
     frame_id: str
     camera_id: str
     timestamp: float
-    frame_data_jpeg: bytes
-    vehicle_id: str
-    vehicle_class: str
-    plate_bbox_original: List[int]
-    plate_confidence: float
+    vehicle_id: int
+    lp_text: str
+    ocr_confidence: float
