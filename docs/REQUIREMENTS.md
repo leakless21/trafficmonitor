@@ -34,6 +34,10 @@
 
 - The system shall implement structured logging for debugging, informational, and error messages.
 - The system shall support configurable log levels and formats.
+- The system shall provide detailed class-specific logging for vehicle detection, tracking, and counting.
+- The system shall log specific vehicle class names (e.g., "car", "bicycle", "truck") instead of generic "vehicle" terms.
+- The system shall include track IDs and class information in vehicle crossing detection logs.
+- The system shall provide class-specific count summaries in detection and tracking logs.
 
 ## Non-Functional Requirements
 

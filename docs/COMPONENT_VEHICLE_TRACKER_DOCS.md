@@ -24,3 +24,17 @@ This document outlines the `VehicleTracker` component, responsible for handling 
     - `input_queue (Queue)`: Multiprocessing queue to receive `VehicleDetectionMessage` objects from upstream processes (e.g., `VehicleDetector`).
     - `output_queue (Queue)`: Multiprocessing queue to send `TrackedVehicleMessage` objects to downstream processes.
     - `shutdown_event (Event)`: An event flag used to signal the process to gracefully shut down.
+
+## Vehicle Counter Component
+
+### Overview
+
+The Vehicle Counter component is responsible for counting vehicles that cross a predefined virtual line within the video feed. It processes tracked vehicle data and updates counts based on vehicle movements.
+
+### Related Classes and Files
+
+- **`Counter` Class**: Located in `src/traffic_monitor/services/vehicle_counter.py`
+  - Manages the counting logic, including tracking vehicle positions relative to the counting line and maintaining counts.
+- **`vehicle_counter_process` Function**: Located in `src/traffic_monitor/services/vehicle_counter.py`
+  - The main entry point for the vehicle counter as a multiprocessing service. It initializes the `Counter` and handles message queues for input and output.
+- **Configuration**: Counting line coordinates are defined in `src/traffic_monitor/config/settings.yaml` under the `vehicle_counter` section. The format is a list of line definitions, where each line is represented by two points: `[[x1, y1], [x2, y2]]`. For example: `counting_lines: - [[0, 750], [1920, 750]] - [[500, 0], [500, 1080]]`.

@@ -11,7 +11,6 @@ vehicle_detector:
     3: "car"
     4: "motorcycle"
     6: "bus"
-    7: "train"
     8: "truck"
 
 vehicle_tracker:
@@ -25,7 +24,39 @@ vehicle_tracker:
 loguru:
   level: "DEBUG"
   format: "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{process.name: <15}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+  file_path: "logs/traffic_monitor.log"
+  file_rotation: "10 MB"
+  file_retention: "7 days"
+  file_compression: "zip"
+  terminal_output_enabled: true
+  log_file_overwrite: true
 
 lp_detector:
   model_path: "data/models/plate_v8n.pt"
   conf_threshold: 0.6
+
+ocr_reader:
+  hub_model_name: "global-plates-mobile-vit-v2-model"
+  device: "auto"
+  conf_threshold: 0.5
+
+vehicle_counter:
+  counting_lines:
+    - # First line
+      - [0, 750]
+      - [1920, 750]
+
+visualizer:
+  font: cv2.FONT_HERSHEY_SIMPLEX
+  font_scale: 0.6
+  font_thickness: 2
+  ocr_duration: 3.0
+
+  class_colors:
+    person: (0, 0, 255)
+    bicycle: (0, 255, 0)
+    car: (255, 0, 0)
+    motorcycle: (255, 255, 0)
+    bus: (0, 255, 255)
+    truck: (255, 0, 255)
+    default: (255, 255, 255)

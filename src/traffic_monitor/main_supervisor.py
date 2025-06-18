@@ -6,13 +6,16 @@ from loguru import logger
 from pathlib import Path
 from queue import Empty
 
-from traffic_monitor.utils.custom_types import PlateDetectionMessage
+from traffic_monitor.utils.custom_types import OCRResultMessage
 from .utils.logging_config import setup_logging
+from .services.distributor import distributor_process
 from .services.frame_grabber import frame_grabber_process
 from .utils.config_loader import load_config
 from .services.vehicle_detector import vehicle_detector_process
 from .services.vehicle_tracker import vehicle_tracker_process
 from .services.lp_detector import lp_detector_process
+from .services.ocr_reader import ocr_reader_process
+from .services.vehicle_counter import vehicle_counter_process
 
 
 def main():
@@ -35,25 +38,53 @@ def main():
 
     fg_config = config.get("frame_grabber", {})
     fg_config["service_name"] = "FrameGrabber"
+    logger.debug(f"FrameGrabber config: {fg_config}")
 
     vd_config = config.get("vehicle_detector", {})
     vd_config["service_name"] = "VehicleDetector"
+    logger.debug(f"VehicleDetector config: {vd_config}")
 
     vt_config = config.get("vehicle_tracker", {})
     vt_config["service_name"] = "VehicleTracker"
     vt_config["class_mapping"] = config["vehicle_detector"]["class_mapping"]
+    logger.debug(f"VehicleTracker config: {vt_config}")
 
     lp_config = config.get("lp_detector", {})
     lp_config["service_name"] = "LPDetector"
+    logger.debug(f"LPDetector config: {lp_config}")
+
+    ocr_config = config.get("ocr_reader", {})
+    ocr_config["service_name"] = "OCRReader"
+    logger.debug(f"OCRReader config: {ocr_config}")
+
+    vc_config = config.get("vehicle_counter", {})
+    vc_config["service_name"] = "VehicleCounter"
+    logger.debug(f"VehicleCounter config: {vc_config}")
 
     if not config:
         logger.error("Failed to load configuration. Exiting.")
         return
 
-    frame_grabber_output_queue = mp.Queue(maxsize=1000)
-    vehicle_detector_output_queue = mp.Queue(maxsize=1000)
-    vehicle_tracker_output_queue = mp.Queue(maxsize=1000)
-    lp_detector_output_queue = mp.Queue(maxsize=1000)
+    frame_grabber_output_queue = mp.Queue(maxsize=500)
+    vehicle_detector_output_queue = mp.Queue(maxsize=500)
+    vehicle_tracker_output_queue = mp.Queue(maxsize=500)
+    lp_detector_output_queue = mp.Queue(maxsize=500)
+    ocr_reader_output_queue = mp.Queue(maxsize=500)
+    vehicle_counter_output_queue = mp.Queue(maxsize=500)
+
+    lp_detector_input_queue = mp.Queue(maxsize=500)
+    vehicle_counter_input_queue = mp.Queue(maxsize=500)
+
+    dist_process = mp.Process(
+        target=distributor_process,
+        name="Distributor",
+        args=(
+            vehicle_tracker_output_queue,
+            [lp_detector_input_queue, vehicle_counter_input_queue],
+            shutdown_event
+        )
+    )
+
     # FrameGrabber process
     fg_process = mp.Process(
         target=frame_grabber_process,
@@ -85,7 +116,19 @@ def main():
     lp_process = mp.Process(
         target=lp_detector_process,
         name="LPDetector",
-        args=(lp_config, vehicle_tracker_output_queue, lp_detector_output_queue, shutdown_event)
+        args=(lp_config, lp_detector_input_queue, lp_detector_output_queue, shutdown_event)
+    )
+    # OCRReader process
+    ocr_process = mp.Process(
+        target=ocr_reader_process,
+        name="OCRReader",
+        args=(ocr_config, lp_detector_output_queue, ocr_reader_output_queue, shutdown_event)
+    )
+    # VehicleCounter process
+    vc_process = mp.Process(
+        target=vehicle_counter_process,
+        name="VehicleCounter",
+        args=(vc_config, vehicle_counter_input_queue, vehicle_counter_output_queue, shutdown_event)
     )
     # Start the processes
     fg_process.start()
@@ -100,19 +143,26 @@ def main():
     lp_process.start()
     logger.info(f"MainProcess] LPDetector process started with PID {lp_process.pid}.")
 
-    processes = [fg_process, vd_process, vt_process, lp_process]
+    ocr_process.start()
+    logger.info(f"MainProcess] OCRReader process started with PID {ocr_process.pid}.")
+
+    vc_process.start()
+    logger.info(f"MainProcess] VehicleCounter process started with PID {vc_process.pid}.")
+
+    dist_process.start()
+    logger.info(f"MainProcess] Distributor process started with PID {dist_process.pid}.")
+
+    processes = [fg_process, vd_process, vt_process, lp_process, ocr_process, vc_process, dist_process]
 
     try:
         logger.info("Starting main loop...")
-        plates_detected = 0
-        while True:
+        plates_read = 0
+        while any(process.is_alive() for process in processes):
             try:
-                plate_message: PlateDetectionMessage = lp_detector_output_queue.get(timeout=1)
-                if plate_message is None:
-                    logger.info(f"MainProcess] Received None message, shutting down.")
-                    break
-                plates_detected += 1
-                logger.info(f"MainProcess] Detected plate {plates_detected} for vehicle {plate_message['vehicle_id']} with plate: {plate_message['plate_bbox_original']} (conf: {plate_message['plate_confidence']})")
+                ocr_message: OCRResultMessage = ocr_reader_output_queue.get_nowait()
+                if ocr_message is not None:
+                    plates_read += 1
+                    logger.info(f"[MainProcess] Plate #{plates_read} read: '{ocr_message['lp_text']}' from vehicle ID {ocr_message['vehicle_id']} (confidence: {ocr_message['ocr_confidence']:.3f})")
             except Empty:
                 if not any(process.is_alive() for process in processes):
                     logger.error("MainProcess] All processes are dead. Shutting down.")
@@ -147,6 +197,14 @@ def main():
             vehicle_tracker_output_queue.join_thread() # Wait for all items to be flushed
             lp_detector_output_queue.close()
             lp_detector_output_queue.join_thread() # Wait for all items to be flushed
+            ocr_reader_output_queue.close()
+            ocr_reader_output_queue.join_thread() # Wait for all items to be flushed
+            vehicle_counter_output_queue.close()
+            vehicle_counter_output_queue.join_thread() # Wait for all items to be flushed
+            lp_detector_input_queue.close()
+            lp_detector_input_queue.join_thread() # Wait for all items to be flushed
+            vehicle_counter_input_queue.close()
+            vehicle_counter_input_queue.join_thread() # Wait for all items to be flushed
             logger.info("Queues closed.")
         except Exception as queue_error:
             logger.error(f"Error closing queues: {queue_error}")

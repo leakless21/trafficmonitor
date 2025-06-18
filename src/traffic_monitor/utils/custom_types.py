@@ -1,5 +1,5 @@
 from re import I
-from typing import List, TypedDict, Optional # Optional is useful for fields that might not always be there
+from typing import Dict, List, TypedDict, Optional # Optional is useful for fields that might not always be there
 import numpy as np # For type hinting numpy arrays if needed
 
 # Example message structure for frames from FrameGrabber
@@ -50,3 +50,9 @@ class OCRResultMessage(TypedDict):
     vehicle_id: int
     lp_text: str
     ocr_confidence: float
+
+class VehicleCountMessage(TypedDict):
+    camera_id: str
+    timestamp: float
+    total_count: int
+    count_by_class: Dict[str, int]

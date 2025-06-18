@@ -41,7 +41,7 @@ class LPDetector:
             return None
         best_plate = results[0].boxes[0]
         bbox = best_plate.xyxy[0].tolist()
-        confidence = float(best_plate.conf)
+        confidence = best_plate.conf.item()
         return (bbox, confidence)
 
 def lp_detector_process(
@@ -53,6 +53,9 @@ def lp_detector_process(
     """
     Processes license plate detection in a separate process.
     """
+    from ..utils.logging_config import setup_logging
+    setup_logging()  # Setup logging for this process
+    
     process_name = mp.current_process().name
     logger.info(f"[LPDetectorProcess] Starting process {process_name}")
 
@@ -96,24 +99,32 @@ def lp_detector_process(
             jpeg_bytes = message["frame_data_jpeg"]
             original_frame = cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8), cv2.IMREAD_COLOR)
 
+            lp_detections = []
             for vehicle in message["tracked_objects"]:
-                vx1, vy1, vx2, vy2 = vehicle["bbox_xyxy"]
-                if vx1 >= vx2 or vy1 >= vy2:
+                bbox = vehicle["bbox_xyxy"]
+                vehicle_crop = original_frame[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+                
+                if vehicle_crop.size == 0:
+                    logger.debug(f"[{process_name}] Empty vehicle crop for {vehicle['class_name']} (ID: {vehicle['track_id']})")
                     continue
-                vehicle_crop = original_frame[vy1:vy2, vx1:vx2]
+                
+                detections = lp_detector.find_plates(vehicle_crop)
+                
+                if detections is not None:
+                    logger.debug(f"[{process_name}] Detected license plate on {vehicle['class_name']} (ID: {vehicle['track_id']})")
+                else:
+                    logger.debug(f"[{process_name}] No license plate detected on {vehicle['class_name']} (ID: {vehicle['track_id']})")
 
-                plate_results = lp_detector.find_plates(vehicle_crop)
-
-                if plate_results:
-                    lp_bbox_on_crop, lp_confidence = plate_results
+                if detections is not None:
+                    lp_bbox_on_crop, lp_confidence = detections
                     lp_x1_crop, lp_y1_crop, lp_x2_crop, lp_y2_crop = lp_bbox_on_crop
 
-                    final_lp_x1 = vx1 + lp_x1_crop
-                    final_lp_y1 = vy1 + lp_y1_crop
-                    final_lp_x2 = vx1 + lp_x2_crop
-                    final_lp_y2 = vy1 + lp_y2_crop
+                    final_lp_x1 = bbox[0] + lp_x1_crop
+                    final_lp_y1 = bbox[1] + lp_y1_crop
+                    final_lp_x2 = bbox[0] + lp_x2_crop
+                    final_lp_y2 = bbox[1] + lp_y2_crop
 
-                    final_lp_bbox = [final_lp_x1, final_lp_y1, final_lp_x2, final_lp_y2]
+                    final_lp_bbox = [int(c) for c in [final_lp_x1, final_lp_y1, final_lp_x2, final_lp_y2]]
 
                     plate_message: PlateDetectionMessage = {
                         "frame_id": message["frame_id"],

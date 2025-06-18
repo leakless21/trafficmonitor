@@ -54,11 +54,11 @@ class VehicleDetector:
         
         # Iterate through detected bounding boxes
         for box in results[0].boxes:
-            class_id = int(box.cls)
+            class_id = box.cls.item()  # Use .item() to extract scalar from array
             # Only consider detections for classes specified in the mapping
             if class_id in self.class_mapping: 
-                bbox = box.xyxy[0].tolist() # Get bounding box coordinates [x1, y1, x2, y2]
-                confidence = float(box.conf) # Get detection confidence score
+                bbox = [int(c) for c in box.xyxy[0].tolist()] # Get bounding box coordinates [x1, y1, x2, y2]
+                confidence = box.conf.item()  # Use .item() to extract scalar from array
                 
                 detections_dict: Detection = {
                     "bbox_xyxy": bbox,
@@ -154,7 +154,18 @@ def vehicle_detector_process(
 
             # Perform vehicle detection on the current frame
             detections = vehicle_detector.detect(frame)
-            logger.debug(f"[{process_name}] Detected {len(detections)} vehicles in frame {frame_message['frame_id']}")
+            
+            # Enhanced logging with class-specific information
+            if detections:
+                class_counts = {}
+                for det in detections:
+                    class_name = det["class_name"]
+                    class_counts[class_name] = class_counts.get(class_name, 0) + 1
+                
+                class_summary = ", ".join([f"{count} {class_name}{'s' if count > 1 else ''}" for class_name, count in class_counts.items()])
+                logger.debug(f"[{process_name}] Detected {len(detections)} objects in frame {frame_message['frame_id']}: {class_summary}")
+            else:
+                logger.debug(f"[{process_name}] No objects detected in frame {frame_message['frame_id']}")
 
             # Construct the output message with detection results
             output_message: VehicleDetectionMessage = {

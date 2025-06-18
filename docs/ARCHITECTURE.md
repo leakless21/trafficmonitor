@@ -47,3 +47,35 @@ The system utilizes `multiprocessing.Queue` for inter-process communication betw
 - `half` (bool): Whether to use half-precision (FP16) for inference (typically for GPU).
 - `per_class` (bool | None): Whether to track objects per class.
 - `tracker_config` (Path): Path to the tracker-specific configuration file (e.g., `src/traffic_monitor/config/bytetrack.yaml`).
+
+### Logging Configuration
+
+**Purpose:** The logging system is configured to provide clear and actionable insights into the application's runtime behavior, facilitating debugging and monitoring.
+
+**Area of Responsibility:**
+
+- Centralized logging setup via `src/traffic_monitor/utils/logging_config.py`.
+- Customizable logging levels and formats.
+- Output to both console and file for comprehensive record-keeping.
+- **Multiprocessing Support:** Each child process (VehicleDetector, VehicleTracker, LPDetector, OCRReader) independently sets up logging to ensure proper log output from all processes.
+
+**Configuration:**
+
+- The default terminal output level is set to `INFO` to minimize verbose debug messages in the console.
+- Logging parameters such as level, format, file path, rotation, retention, and compression can be configured via `loguru` section in `src/traffic_monitor/config/settings.yaml`.
+- **Process-Specific Logging:** Each process function calls `setup_logging()` at startup to ensure consistent logging configuration across all processes.
+
+**Dependencies:**
+
+- Each multiprocessing service (`lp_detector_process`, `ocr_reader_process`, etc.) must import and call `setup_logging()` to initialize logging properly.
+
+### Vehicle Counter Service
+
+- **Technical Requirements**: Handles vehicle counting based on predefined counting lines. Processes `TrackedVehicleMessage` and outputs `VehicleCountMessage`.
+- **Area of Responsibility**: Detecting when a tracked vehicle crosses a designated line and maintaining counts by class and total.
+- **Compute**: Primarily CPU-bound, performing geometric calculations and dictionary operations.
+- **Storage**: Stores current vehicle positions and counted track IDs in memory.
+- **Interface toward other components**:
+  - **Input**: Receives `TrackedVehicleMessage` from `Vehicle Tracker` via an input queue.
+  - **Output**: Sends `VehicleCountMessage` to `Main Supervisor` via an output queue.
+- **Dependency to other components**: Depends on `shapely` for geometric operations and `loguru` for logging. Receives data from `Vehicle Tracker`.

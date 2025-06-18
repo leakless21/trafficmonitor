@@ -175,7 +175,23 @@ def vehicle_tracker_process(config: Dict[str, Any], input_queue: Queue, output_q
             # Perform tracking on the detected objects
             detections = vehicle_detection_message["detections"]
             tracked_objects = tracker.update(detections, class_mapping, frame)
-            logger.debug(f"[{process_name}] Tracked {len(tracked_objects)} objects in frame {vehicle_detection_message['frame_id']}")
+            
+            # Enhanced logging with class-specific tracking information
+            if tracked_objects:
+                class_tracks = {}
+                track_ids_by_class = {}
+                for obj in tracked_objects:
+                    class_name = obj["class_name"]
+                    class_tracks[class_name] = class_tracks.get(class_name, 0) + 1
+                    if class_name not in track_ids_by_class:
+                        track_ids_by_class[class_name] = []
+                    track_ids_by_class[class_name].append(obj["track_id"])
+                
+                class_summary = ", ".join([f"{count} {class_name}{'s' if count > 1 else ''} (IDs: {track_ids_by_class[class_name]})" 
+                                         for class_name, count in class_tracks.items()])
+                logger.debug(f"[{process_name}] Tracking {len(tracked_objects)} objects in frame {vehicle_detection_message['frame_id']}: {class_summary}")
+            else:
+                logger.debug(f"[{process_name}] No objects being tracked in frame {vehicle_detection_message['frame_id']}")
 
             # Put the tracked vehicle message into the output queue
             output_message = TrackedVehicleMessage(
@@ -188,6 +204,7 @@ def vehicle_tracker_process(config: Dict[str, Any], input_queue: Queue, output_q
                 tracked_objects=tracked_objects
             )
             output_queue.put(output_message)
+            logger.debug(f"[{process_name}] Put tracked vehicle message for frame {vehicle_detection_message['frame_id']} to output queue.")
     except Exception as e:
         # Log any exceptions that occur during the process and propagate the shutdown signal
         logger.error(f"[{process_name}] Error in Vehicle Tracker process: {e}")
