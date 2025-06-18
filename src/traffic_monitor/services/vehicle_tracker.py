@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 from loguru import logger
 from boxmot import create_tracker
-from ..utils.custom_types import FrameMessage, VehicleDetectionMessage, Detection, TrackedObject, TrackedVehicleMessage
+from ..utils.custom_types import FrameMessage, VehicleDetectionMessage, Detection, TrackedObject, VehicleTrackingMessage
 from pathlib import Path
 from typing import Any, Dict, List
 from ..utils.logging_config import setup_logging
@@ -194,13 +194,15 @@ def vehicle_tracker_process(config: Dict[str, Any], input_queue: Queue, output_q
                 logger.debug(f"[{process_name}] No objects being tracked in frame {vehicle_detection_message['frame_id']}")
 
             # Put the tracked vehicle message into the output queue
-            output_message = TrackedVehicleMessage(
+            output_message = VehicleTrackingMessage(
                 frame_id=vehicle_detection_message["frame_id"],
                 camera_id=vehicle_detection_message["camera_id"],
                 timestamp=vehicle_detection_message["timestamp"],
                 frame_data_jpeg=jpeg_binary,
                 frame_height=vehicle_detection_message["frame_height"],
                 frame_width=vehicle_detection_message["frame_width"],
+                original_frame_height=vehicle_detection_message["original_frame_height"],
+                original_frame_width=vehicle_detection_message["original_frame_width"],
                 tracked_objects=tracked_objects
             )
             output_queue.put(output_message)

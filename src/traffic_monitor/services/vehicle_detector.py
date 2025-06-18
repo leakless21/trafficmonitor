@@ -175,6 +175,8 @@ def vehicle_detector_process(
                 "camera_id": frame_message["camera_id"],
                 "timestamp": frame_message["timestamp"],
                 "frame_data_jpeg": frame_message["frame_data_jpeg"],
+                "original_frame_height": frame_message["original_frame_height"],
+                "original_frame_width": frame_message["original_frame_width"],
                 "detections": detections
             }
             

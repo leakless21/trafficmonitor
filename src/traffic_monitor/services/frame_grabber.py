@@ -51,6 +51,25 @@ def frame_grabber_process(
     frame_counter = 0
     # Configure logging frequency for frames, defaulting to every 30 frames
     log_every_n_frames = config.get("log_every_n_frames", 30)
+
+    resize_dimensions = config.get("resolution", None)
+    target_fps = config.get("fps_limit", None)
+
+    is_live = isinstance(video_source, int)
+    if is_live:
+        logger.info(f"[{process_name}] Live video source detected. Setting target FPS to {target_fps}.")
+        if resize_dimensions:
+            logger.info(f"[{process_name}] Resizing video source to {resize_dimensions}.")
+            video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, resize_dimensions[0])
+            video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, resize_dimensions[1])
+        if target_fps:
+            video_capture.set(cv2.CAP_PROP_FPS, target_fps)
+        
+    
+    actual_fps = video_capture.get(cv2.CAP_PROP_FPS)
+    actual_width = video_capture.get(cv2.CAP_PROP_FRAME_WIDTH)
+    actual_height = video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    logger.info(f"[{process_name}] Actual FPS: {actual_fps}, Actual Width: {actual_width}, Actual Height: {actual_height}")
     
     try:
         # Main loop: continue until a shutdown signal is received
@@ -60,6 +79,9 @@ def frame_grabber_process(
             if not ret:
                 logger.error(f"[{process_name}] Failed to read frame from video source: {video_source}. Breaking loop.")
                 break
+
+            if resize_dimensions and len(resize_dimensions) == 2:
+                frame = cv2.resize(frame, resize_dimensions)
             
             # Get frame dimensions
             height, width, _ = frame.shape
@@ -79,6 +101,8 @@ def frame_grabber_process(
                 "frame_data_jpeg": jpeg_binary,
                 "frame_width": width,
                 "frame_height": height,
+                "original_frame_height": actual_height,
+                "original_frame_width": actual_width,
                 "source": video_source # Original video source identifier
             }
             

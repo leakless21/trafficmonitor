@@ -11,6 +11,8 @@ class FrameMessage(TypedDict):
     frame_data_jpeg: bytes # JPEG binary
     frame_height: int
     frame_width: int
+    original_frame_height: int
+    original_frame_width: int
 
 # Example for Vehicle Detections (Matches your plan for VehicleDetector output)
 class Detection(TypedDict):
@@ -29,7 +31,7 @@ class TrackedObject(TypedDict):
     class_name: str
     track_id: int
 
-class TrackedVehicleMessage(FrameMessage):
+class VehicleTrackingMessage(FrameMessage):
     tracked_objects: List[TrackedObject]
 
 class PlateDetectionMessage(FrameMessage):
@@ -56,5 +58,9 @@ class VehicleCountMessage(TypedDict):
     timestamp: float
     total_count: int
     class_counts: Dict[str, int]
+    # Counting line coordinates for visualizer (scaled to current frame resolution)
+    counting_lines_absolute: Optional[List[List[List[int]]]]  # [[[x1,y1],[x2,y2]], ...]
+    line_display_color: Optional[List[int]]  # BGR color for visualization
+    line_thickness: Optional[int]
 
 

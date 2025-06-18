@@ -1,3 +1,42 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.direnv/
+pip-log.txt
+pip-delete-this-directory/
+.tox/
+.coverage
+.pytest_cache/
+htmlcov/
+.nox/
+.eggs/
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Editor-specific
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Project-specific
+#data/db/
+#logs/
+#data/models/*.onnx
+#data/models/*.pt
+# You might want to keep the input videos, but ignore output videos if generated
+#data/videos/output/
 
 # pixi environments
 .pixi

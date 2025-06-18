@@ -1,10 +1,11 @@
 frame_grabber:
   video_source: "data/videos/input/platetest.mp4"
-  fps_limit: 30 # Example, might not be used initially
+  resolution: [1280, 720] # Different from original video resolution
+  fps_limit: 15
 
 vehicle_detector:
   model_path: "data/models/yolo11n.pt"
-  conf_threshold: 0.5
+  conf_threshold: 0.6
   class_mapping:
     0: "person"
     1: "bicycle"
@@ -41,28 +42,32 @@ ocr_reader:
   conf_threshold: 0.5
 
 vehicle_counter:
+  # VehicleCounter defines its own counting lines - no duplication needed!
   counting_lines:
-    - # First line
-      - [0, 750]
-      - [1920, 750]
+    - # Primary counting line (defined in original video coordinates)
+      - [0, 750] # Left point at y=750 (≈70% of original 1080p video)
+      - [1920, 750] # Right point at y=750
+  # Display properties for visualization
+  display_color: [0, 0, 255] # BGR color (red)
+  line_thickness: 2
+  enabled: true
 
 visualizer:
-  font: "FONT_HERSHEY_SIMPLEX" # Can use string name or integer (0)
+  font: "FONT_HERSHEY_SIMPLEX"
   font_scale: 0.6
   font_thickness: 2
   ocr_duration: 3.0
+  # Counting line coordinates and display properties are received from VehicleCounter
+  # No counting line configuration needed here!
 
   # Modern, visually distinct color palette (BGR format for OpenCV)
   class_colors:
-    # Primary vehicle colors (highly distinct)
     car: [0, 119, 187] # Blue
     truck: [14, 127, 255] # Orange
     bus: [44, 160, 44] # Green
     motorcycle: [40, 39, 214] # Red
     bicycle: [189, 103, 148] # Purple
     person: [75, 86, 140] # Brown
-
-    # Additional colors if needed
     van: [194, 119, 227] # Pink
     trailer: [127, 127, 127] # Gray
     scooter: [34, 189, 188] # Olive
@@ -71,23 +76,20 @@ visualizer:
   # Default color for unknown classes
   default_color: [255, 255, 255] # White
 
-# Color palette reference (for easy customization):
-# These are scientifically chosen colors for maximum distinction
+# ✅ Correct Architecture:
 #
-# Alternative color schemes you can copy-paste:
+# 1. VehicleCounter reads its own 'counting_lines' configuration
+# 2. VehicleCounter normalizes coordinates and handles resolution scaling
+# 3. VehicleCounter sends counting line info to Visualizer via VehicleCountMessage
+# 4. Visualizer displays exactly what VehicleCounter is using for counting
 #
-# === BRIGHT SCHEME ===
-# car: [0, 255, 255]      # Cyan
-# truck: [0, 165, 255]    # Orange
-# bus: [0, 255, 0]        # Green
-# motorcycle: [0, 0, 255] # Red
-# bicycle: [255, 0, 255]  # Magenta
-# person: [255, 255, 0]   # Yellow
-#
-# === PASTEL SCHEME ===
-# car: [180, 180, 255]    # Light Blue
-# truck: [180, 255, 180]  # Light Green
-# bus: [255, 180, 180]    # Light Red
-# motorcycle: [255, 255, 180] # Light Yellow
-# bicycle: [255, 180, 255]    # Light Magenta
-# person: [180, 255, 255]     # Light Cyan
+# Benefits:
+# - No configuration duplication
+# - VehicleCounter is the single source of truth for counting logic
+# - Guaranteed consistency between counting and visualization
+# - Clean separation of concerns
+
+# Resolution Scaling:
+# The counting lines above are defined in original video coordinates (1920x1080)
+# The system automatically scales them to display resolution (1280x720)
+# Example: y=750 (70% of 1080) becomes y=500 (70% of 720)

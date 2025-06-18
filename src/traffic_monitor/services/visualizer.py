@@ -10,7 +10,7 @@ import numpy as np
 import time
 from collections import deque
 
-from ..utils.custom_types import TrackedVehicleMessage, VehicleCountMessage, OCRResultMessage, TrackedObject
+from ..utils.custom_types import VehicleTrackingMessage, VehicleCountMessage, OCRResultMessage, TrackedObject
 from ..utils.logging_config import setup_logging
 
 class Visualizer:
@@ -31,12 +31,19 @@ class Visualizer:
         # Parse colors safely
         self.colors = self._parse_colors(config.get("class_colors", {}))
         self.default_color = self._parse_color(config.get("default_color", [255, 255, 255]))
-
+         
+        # Counting line information will now come from VehicleCountMessage
+        self.counting_lines_absolute = None
+        self.line_color = [0, 0, 255]  # Default, will be updated from VehicleCountMessage
+        self.line_thickness = 2  # Default, will be updated from VehicleCountMessage
+        
         self.latest_ocr_results = {}
         self.latest_vehicle_count: VehicleCountMessage | Dict = {}
         self.fps_calculator = deque(maxlen=60)
+        
         logger.info(f"[Visualizer] Visualizer initialized with font: {self.font}, font scale: {self.font_scale}, font thickness: {self.font_thickness}")
         logger.debug(f"[Visualizer] Parsed colors: {self.colors}")
+        logger.info(f"[Visualizer] Counting lines will be received from VehicleCounter process")
     
     def _parse_color(self, color_value):
         """Parse color value from various formats to tuple."""
@@ -65,6 +72,8 @@ class Visualizer:
             parsed_colors[class_name] = self._parse_color(color_value)
         return parsed_colors
     
+
+    
     def _draw_vehicle_info(self, image: np.ndarray, vehicle: TrackedObject):
         x1, y1, x2, y2 = vehicle["bbox_xyxy"]
         class_name = vehicle["class_name"]
@@ -92,8 +101,18 @@ class Visualizer:
             fps_text = f"FPS: {fps:.1f}"
         else:
             fps_text = "FPS: N/A"
-        
         cv2.putText(image, fps_text, (10, 30), self.font, self.font_scale, (255, 255, 255), self.font_thickness)
+         
+        # Draw counting lines (received from VehicleCounter)
+        if self.counting_lines_absolute and len(self.counting_lines_absolute) > 0:
+            # counting_lines_absolute is now a list of lines: [[[x1,y1],[x2,y2]], ...]
+            for line_coords in self.counting_lines_absolute:
+                if len(line_coords) >= 2:
+                    pt1 = tuple(line_coords[0])  # [x1, y1] -> (x1, y1)
+                    pt2 = tuple(line_coords[1])  # [x2, y2] -> (x2, y2)
+                    color = tuple(self.line_color) if self.line_color else (0, 0, 255)
+                    thickness = self.line_thickness if self.line_thickness else 2
+                    cv2.line(image, pt1, pt2, color, thickness)
 
         # Draw vehicle counts
         if self.latest_vehicle_count:
@@ -111,7 +130,7 @@ class Visualizer:
                 cv2.putText(image, class_text, (10, 100 + (index * 20)), self.font, self.font_scale, (255, 255, 255), self.font_thickness)
                 index += 1
     
-    def process_frame(self, frame_msg: TrackedVehicleMessage) -> np.ndarray:
+    def process_frame(self, frame_msg: VehicleTrackingMessage) -> np.ndarray:
         jpeg_bytes = frame_msg["frame_data_jpeg"]
         frame = cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8), cv2.IMREAD_COLOR)
         self.fps_calculator.append(time.time())
@@ -122,6 +141,20 @@ class Visualizer:
         self._draw_stats(frame)
         return frame
     
+    def update_counting_lines(self, count_message: VehicleCountMessage):
+        """Update counting line information from VehicleCountMessage."""
+        if count_message.get("counting_lines_absolute"):
+            self.counting_lines_absolute = count_message["counting_lines_absolute"]
+            logger.debug(f"[Visualizer] Updated counting lines from VehicleCounter: {self.counting_lines_absolute}")
+        
+        if count_message.get("line_display_color"):
+            self.line_color = count_message["line_display_color"]
+            logger.debug(f"[Visualizer] Updated line color: {self.line_color}")
+            
+        if count_message.get("line_thickness"):
+            self.line_thickness = count_message["line_thickness"]
+            logger.debug(f"[Visualizer] Updated line thickness: {self.line_thickness}")
+
 def visualize_process(config: dict, tracking_queue: Queue, OCR_queue: Queue, vehicle_count_queue: Queue, shutdown_event: Event):
     # Setup logging for this process
     try:
@@ -157,7 +190,7 @@ def visualize_process(config: dict, tracking_queue: Queue, OCR_queue: Queue, veh
         frame_count = 0
         while not shutdown_event.is_set():
             try:
-                tracking_msg: TrackedVehicleMessage = tracking_queue.get(timeout=1)
+                tracking_msg: VehicleTrackingMessage = tracking_queue.get(timeout=1)
                 logger.debug(f"[Visualizer] Received tracking message for frame: {tracking_msg.get('frame_id', 'unknown')}")
             except Empty:
                 logger.debug(f"[Visualizer] No tracking message received, continuing...")
@@ -195,6 +228,8 @@ def visualize_process(config: dict, tracking_queue: Queue, OCR_queue: Queue, veh
                         count_msg: VehicleCountMessage = vehicle_count_queue.get_nowait()
                         if count_msg:
                             visualizer.latest_vehicle_count = count_msg
+                            # Update counting line information from VehicleCounter
+                            visualizer.update_counting_lines(count_msg)
                             count_messages_processed += 1
                     except Empty:
                         break

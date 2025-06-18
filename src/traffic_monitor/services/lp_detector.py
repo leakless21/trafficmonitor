@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 from loguru import logger
 
-from ..utils.custom_types import FrameMessage, PlateDetectionMessage, TrackedVehicleMessage
+from ..utils.custom_types import FrameMessage, PlateDetectionMessage, VehicleTrackingMessage
 
 class LPDetector:
     """
@@ -88,7 +88,7 @@ def lp_detector_process(
     try:
         while not shutdown_event.is_set():
             try:
-                message: TrackedVehicleMessage = input_queue.get(timeout=1)
+                message: VehicleTrackingMessage = input_queue.get(timeout=1)
             except Empty:
                 continue
             if message is None:
@@ -133,6 +133,8 @@ def lp_detector_process(
                         "frame_data_jpeg": message["frame_data_jpeg"],
                         "frame_height": message["frame_height"],
                         "frame_width": message["frame_width"],
+                        "original_frame_height": message["original_frame_height"],
+                        "original_frame_width": message["original_frame_width"],
                         "vehicle_id": vehicle["track_id"],
                         "vehicle_class": vehicle["class_name"],
                         "plate_bbox_original": final_lp_bbox,

@@ -8,7 +8,7 @@ from queue import Empty
 
 from traffic_monitor.utils.custom_types import OCRResultMessage
 from .utils.logging_config import setup_logging
-from .services.distributor import distributor_process
+from .utils.distributor import distributor_process
 from .services.frame_grabber import frame_grabber_process
 from .utils.config_loader import load_config
 from .services.vehicle_detector import vehicle_detector_process
@@ -69,7 +69,7 @@ def main():
         logger.error("Failed to load configuration. Exiting.")
         return
 
-    frame_grabber_output_queue = mp.Queue(maxsize=500)
+    frame_grabber_output_queue = mp.Queue(maxsize=60)
     vehicle_detector_output_queue = mp.Queue(maxsize=500)
     vehicle_tracker_output_queue = mp.Queue(maxsize=500)
     lp_detector_output_queue = mp.Queue(maxsize=500)
