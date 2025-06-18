@@ -6,12 +6,12 @@ vehicle_detector:
   model_path: "data/models/yolo11n.pt"
   conf_threshold: 0.5
   class_mapping:
-    1: "person"
-    2: "bicycle"
-    3: "car"
-    4: "motorcycle"
-    6: "bus"
-    8: "truck"
+    0: "person"
+    1: "bicycle"
+    2: "car"
+    3: "motorcycle"
+    5: "bus"
+    7: "truck"
 
 vehicle_tracker:
   tracker_type: "bytetrack"
@@ -33,7 +33,7 @@ loguru:
 
 lp_detector:
   model_path: "data/models/plate_v8n.pt"
-  conf_threshold: 0.6
+  conf_threshold: 0.5
 
 ocr_reader:
   hub_model_name: "global-plates-mobile-vit-v2-model"
@@ -47,16 +47,47 @@ vehicle_counter:
       - [1920, 750]
 
 visualizer:
-  font: cv2.FONT_HERSHEY_SIMPLEX
+  font: "FONT_HERSHEY_SIMPLEX" # Can use string name or integer (0)
   font_scale: 0.6
   font_thickness: 2
   ocr_duration: 3.0
 
+  # Modern, visually distinct color palette (BGR format for OpenCV)
   class_colors:
-    person: (0, 0, 255)
-    bicycle: (0, 255, 0)
-    car: (255, 0, 0)
-    motorcycle: (255, 255, 0)
-    bus: (0, 255, 255)
-    truck: (255, 0, 255)
-    default: (255, 255, 255)
+    # Primary vehicle colors (highly distinct)
+    car: [0, 119, 187] # Blue
+    truck: [14, 127, 255] # Orange
+    bus: [44, 160, 44] # Green
+    motorcycle: [40, 39, 214] # Red
+    bicycle: [189, 103, 148] # Purple
+    person: [75, 86, 140] # Brown
+
+    # Additional colors if needed
+    van: [194, 119, 227] # Pink
+    trailer: [127, 127, 127] # Gray
+    scooter: [34, 189, 188] # Olive
+    boat: [207, 190, 23] # Cyan
+
+  # Default color for unknown classes
+  default_color: [255, 255, 255] # White
+
+# Color palette reference (for easy customization):
+# These are scientifically chosen colors for maximum distinction
+#
+# Alternative color schemes you can copy-paste:
+#
+# === BRIGHT SCHEME ===
+# car: [0, 255, 255]      # Cyan
+# truck: [0, 165, 255]    # Orange
+# bus: [0, 255, 0]        # Green
+# motorcycle: [0, 0, 255] # Red
+# bicycle: [255, 0, 255]  # Magenta
+# person: [255, 255, 0]   # Yellow
+#
+# === PASTEL SCHEME ===
+# car: [180, 180, 255]    # Light Blue
+# truck: [180, 255, 180]  # Light Green
+# bus: [255, 180, 180]    # Light Red
+# motorcycle: [255, 255, 180] # Light Yellow
+# bicycle: [255, 180, 255]    # Light Magenta
+# person: [180, 255, 255]     # Light Cyan

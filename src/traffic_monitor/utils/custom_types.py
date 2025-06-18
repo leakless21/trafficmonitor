@@ -38,7 +38,7 @@ class PlateDetectionMessage(FrameMessage):
     camera_id: str
     timestamp: float
     frame_data_jpeg: bytes
-    vehicle_id: str
+    vehicle_id: int
     vehicle_class: str
     plate_bbox_original: List[int]
     plate_confidence: float
@@ -55,4 +55,6 @@ class VehicleCountMessage(TypedDict):
     camera_id: str
     timestamp: float
     total_count: int
-    count_by_class: Dict[str, int]
+    class_counts: Dict[str, int]
+
+

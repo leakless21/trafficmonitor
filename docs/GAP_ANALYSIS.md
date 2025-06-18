@@ -90,3 +90,37 @@ def vehicle_counter_process(config: dict, input_queue: Queue, output_queue: Queu
 # In main_supervisor.py:
 vc_config["loguru"] = loguru_config
 ```
+
+## Configuration Issues
+
+### Incorrect YOLO Class Mapping
+
+**Issue**: The vehicle detector class mapping was using incorrect YOLO COCO class IDs, causing misclassification of detected vehicles.
+
+**Affected Files**:
+
+- `src/traffic_monitor/config/settings.yaml` ✅ **FIXED**
+
+**Status**: ✅ **RESOLVED** - Updated class mapping to use correct YOLO COCO class IDs.
+
+**Fix Applied**:
+
+```yaml
+# Before (incorrect IDs):
+class_mapping:
+  1: "person"
+  2: "bicycle"
+  3: "car"
+  4: "motorcycle"
+  6: "bus"      # Wrong - should be 5
+  8: "truck"    # Wrong - should be 7
+
+# After (correct COCO IDs):
+class_mapping:
+  0: "person"
+  1: "bicycle"
+  2: "car"
+  3: "motorcycle"
+  5: "bus"
+  7: "truck"
+```

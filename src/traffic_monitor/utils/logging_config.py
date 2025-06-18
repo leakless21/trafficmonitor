@@ -37,7 +37,7 @@ def setup_logging(loguru_config: Dict[str, Any] | None = None):
     log_file_retention = "7 days"
     log_file_compression = "zip"
     terminal_output_enabled = True
-    log_file_overwrite = False
+    log_file_overwrite = True
 
     if loguru_config:
         level = loguru_config.get("level", level)

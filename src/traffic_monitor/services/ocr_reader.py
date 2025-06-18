@@ -96,7 +96,7 @@ def ocr_reader_process(config: Dict[str, Any], lp_detector_output_queue: Queue, 
                     "frame_id": lp_message['frame_id'],
                     "camera_id": lp_message['camera_id'],
                     "timestamp": lp_message['timestamp'],
-                    "vehicle_id": int(lp_message['vehicle_id']),
+                    "vehicle_id": lp_message['vehicle_id'],
                     "lp_text": lp_text,
                     "ocr_confidence": ocr_confidence,
                 }

@@ -16,7 +16,7 @@ from .services.vehicle_tracker import vehicle_tracker_process
 from .services.lp_detector import lp_detector_process
 from .services.ocr_reader import ocr_reader_process
 from .services.vehicle_counter import vehicle_counter_process
-
+from .services.visualizer import visualize_process
 
 def main():
     logger.info("Starting main supervisor process...")
@@ -61,6 +61,10 @@ def main():
     vc_config["service_name"] = "VehicleCounter"
     logger.debug(f"VehicleCounter config: {vc_config}")
 
+    vis_config = config.get("visualizer", {})
+    vis_config["service_name"] = "Visualizer"
+    logger.debug(f"Visualizer config: {vis_config}")
+
     if not config:
         logger.error("Failed to load configuration. Exiting.")
         return
@@ -71,6 +75,7 @@ def main():
     lp_detector_output_queue = mp.Queue(maxsize=500)
     ocr_reader_output_queue = mp.Queue(maxsize=500)
     vehicle_counter_output_queue = mp.Queue(maxsize=500)
+    visualizer_input_queue = mp.Queue(maxsize=500)
 
     lp_detector_input_queue = mp.Queue(maxsize=500)
     vehicle_counter_input_queue = mp.Queue(maxsize=500)
@@ -80,7 +85,7 @@ def main():
         name="Distributor",
         args=(
             vehicle_tracker_output_queue,
-            [lp_detector_input_queue, vehicle_counter_input_queue],
+            [lp_detector_input_queue, vehicle_counter_input_queue, visualizer_input_queue],
             shutdown_event
         )
     )
@@ -130,6 +135,12 @@ def main():
         name="VehicleCounter",
         args=(vc_config, vehicle_counter_input_queue, vehicle_counter_output_queue, shutdown_event)
     )
+    # Visualizer process
+    vis_process = mp.Process(
+        target=visualize_process,
+        name="Visualizer",
+        args=(vis_config, visualizer_input_queue, ocr_reader_output_queue, vehicle_counter_output_queue, shutdown_event)
+    )
     # Start the processes
     fg_process.start()
     logger.info(f"MainProcess] FrameGrabber process started with PID {fg_process.pid}.")
@@ -152,23 +163,20 @@ def main():
     dist_process.start()
     logger.info(f"MainProcess] Distributor process started with PID {dist_process.pid}.")
 
-    processes = [fg_process, vd_process, vt_process, lp_process, ocr_process, vc_process, dist_process]
+    vis_process.start()
+    logger.info(f"MainProcess] Visualizer process started with PID {vis_process.pid}.")
+
+    processes = [fg_process, vd_process, vt_process, lp_process, ocr_process, vc_process, dist_process, vis_process]
 
     try:
-        logger.info("Starting main loop...")
-        plates_read = 0
-        while any(process.is_alive() for process in processes):
-            try:
-                ocr_message: OCRResultMessage = ocr_reader_output_queue.get_nowait()
-                if ocr_message is not None:
-                    plates_read += 1
-                    logger.info(f"[MainProcess] Plate #{plates_read} read: '{ocr_message['lp_text']}' from vehicle ID {ocr_message['vehicle_id']} (confidence: {ocr_message['ocr_confidence']:.3f})")
-            except Empty:
-                if not any(process.is_alive() for process in processes):
-                    logger.error("MainProcess] All processes are dead. Shutting down.")
-                    break
-                continue
-        logger.info("Consumer loop finished. Shutting down.")
+        logger.info("Starting main loop...Press 'q' to quit.")
+        while not shutdown_event.is_set():
+            if not all(process.is_alive() for process in processes):
+                logger.error("MainProcess] One or more processes are dead. Shutting down.")
+                shutdown_event.set()
+                break
+            time.sleep(0.5)
+        logger.info("Main loop finished. Shutting down.")
         shutdown_event.set()
 
     except KeyboardInterrupt:
@@ -205,6 +213,8 @@ def main():
             lp_detector_input_queue.join_thread() # Wait for all items to be flushed
             vehicle_counter_input_queue.close()
             vehicle_counter_input_queue.join_thread() # Wait for all items to be flushed
+            visualizer_input_queue.close()
+            visualizer_input_queue.join_thread() # Wait for all items to be flushed
             logger.info("Queues closed.")
         except Exception as queue_error:
             logger.error(f"Error closing queues: {queue_error}")

@@ -11,6 +11,7 @@
 - The system shall identify the bounding box, confidence score, and class ID for each detected vehicle.
 - The system shall support configurable confidence thresholds for detection.
 - The system shall utilize a pre-trained YOLO model for object detection.
+- The system shall use correct YOLO COCO class mappings (e.g., 0=person, 1=bicycle, 2=car, 3=motorcycle, 5=bus, 7=truck).
 
 ### FR3: Vehicle Tracking
 
