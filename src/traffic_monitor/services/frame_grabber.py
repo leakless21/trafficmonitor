@@ -51,6 +51,7 @@ def frame_grabber_process(
     frame_counter = 0
     # Configure logging frequency for frames, defaulting to every 30 frames
     log_every_n_frames = config.get("log_every_n_frames", 30)
+    jpeg_quality = config.get("jpeg_quality", 80)
 
     resize_dimensions = config.get("resolution", None)
     target_fps = config.get("fps_limit", None)
@@ -87,7 +88,7 @@ def frame_grabber_process(
             height, width, _ = frame.shape
             
             # Encode the frame to JPEG format for efficient transfer
-            success, encoded_image = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 100])
+            success, encoded_image = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality])
             if not success:
                 logger.warning(f"[{process_name}] Failed to encode frame to JPEG. Skipping this frame.")
                 continue

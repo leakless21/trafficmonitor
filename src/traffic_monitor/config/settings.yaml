@@ -2,6 +2,7 @@ frame_grabber:
   video_source: "data/videos/input/platetest.mp4"
   resolution: [1280, 720] # Different from original video resolution
   fps_limit: 15
+  jpeg_quality: 80
 
 vehicle_detector:
   model_path: "data/models/yolo11n.pt"

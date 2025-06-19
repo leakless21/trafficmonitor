@@ -69,16 +69,16 @@ def main():
         logger.error("Failed to load configuration. Exiting.")
         return
 
-    frame_grabber_output_queue = mp.Queue(maxsize=60)
-    vehicle_detector_output_queue = mp.Queue(maxsize=500)
-    vehicle_tracker_output_queue = mp.Queue(maxsize=500)
-    lp_detector_output_queue = mp.Queue(maxsize=500)
-    ocr_reader_output_queue = mp.Queue(maxsize=500)
-    vehicle_counter_output_queue = mp.Queue(maxsize=500)
-    visualizer_input_queue = mp.Queue(maxsize=500)
+    frame_grabber_output_queue = mp.Queue(maxsize=120)
+    vehicle_detector_output_queue = mp.Queue(maxsize=120)
+    vehicle_tracker_output_queue = mp.Queue(maxsize=120)
+    lp_detector_output_queue = mp.Queue(maxsize=200)
+    ocr_reader_output_queue = mp.Queue(maxsize=200)
+    vehicle_counter_output_queue = mp.Queue(maxsize=200)
+    visualizer_input_queue = mp.Queue(maxsize=120)
 
-    lp_detector_input_queue = mp.Queue(maxsize=500)
-    vehicle_counter_input_queue = mp.Queue(maxsize=500)
+    lp_detector_input_queue = mp.Queue(maxsize=120)
+    vehicle_counter_input_queue = mp.Queue(maxsize=120)
 
     dist_process = mp.Process(
         target=distributor_process,
