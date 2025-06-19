@@ -46,8 +46,8 @@ vehicle_counter:
   # VehicleCounter defines its own counting lines - no duplication needed!
   counting_lines:
     - # Primary counting line (defined in original video coordinates)
-      - [0, 750] # Left point at y=750 (≈70% of original 1080p video)
-      - [1920, 750] # Right point at y=750
+      - [0, 250] # Left point at y=250 (≈23% of original 1080p video)
+      - [1920, 250] # Right point at y=250
   # Display properties for visualization
   display_color: [0, 0, 255] # BGR color (red)
   line_thickness: 2

@@ -159,6 +159,10 @@ def vehicle_counter_process(config: dict, input_queue: Queue, output_queue: Queu
         line_thickness = config.get("line_thickness", 2)
         
         counter = Counter(counting_line_coords_list, display_color, line_thickness)
+        
+        # Flag to send initial counting lines to visualizer
+        initial_lines_sent = False
+        
         while not shutdown_event.is_set():
             try:
                 message: VehicleTrackingMessage = input_queue.get(timeout=1)
@@ -183,7 +187,34 @@ def vehicle_counter_process(config: dict, input_queue: Queue, output_queue: Queu
             
             class_summary = ", ".join([f"{count} {class_name}{'s' if count > 1 else ''}" for class_name, count in class_counts.items()])
             logger.debug(f"[VehicleCounter] Processing {len(tracked_objects)} tracked objects: {class_summary}")
+            
             count_update_message = counter.update(tracked_objects, message["original_frame_height"], message["original_frame_width"])
+            
+            # Send initial counting lines to visualizer even if no count update
+            if not initial_lines_sent and counter.counting_lines_absolute:
+                counting_lines_coords_for_visualizer = []
+                for line_string in counter.counting_lines_absolute:
+                    coords = list(line_string.coords)
+                    line_coords = [[int(coords[0][0]), int(coords[0][1])], [int(coords[1][0]), int(coords[1][1])]]
+                    counting_lines_coords_for_visualizer.append(line_coords)
+                
+                initial_message = VehicleCountMessage(
+                    camera_id="camera_id",
+                    timestamp=time.time(),
+                    total_count=0,
+                    class_counts={},
+                    counting_lines_absolute=counting_lines_coords_for_visualizer,
+                    line_display_color=display_color,
+                    line_thickness=line_thickness
+                )
+                
+                try:
+                    output_queue.put(initial_message, timeout=1)
+                    logger.info(f"[VehicleCounter] Sent initial counting lines to visualizer: {counting_lines_coords_for_visualizer}")
+                    initial_lines_sent = True
+                except Full:
+                    logger.warning("[VehicleCounter] Output queue is full, dropping initial counting lines message")
+            
             if count_update_message:
                 total_count = count_update_message["total_count"]
                 class_counts = count_update_message["class_counts"]
