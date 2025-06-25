@@ -48,7 +48,27 @@ def frame_grabber_process(
         return
     logger.info(f"[{process_name}] Video source opened successfully: {video_source}")
 
+    # Get the original frame dimensions
+    original_height, original_width = video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT), video_capture.get(cv2.CAP_PROP_FRAME_WIDTH)
+    original_fps = video_capture.get(cv2.CAP_PROP_FPS)
+    logger.info(f"[{process_name}] Original frame dimensions: {original_width}x{original_height} at {original_fps} FPS")
+    
+    # Get the resize resolution
+    resize_resolution = config.get("resize_resolution", [1920, 1080])
+    if resize_resolution:
+        logger.info(f"[{process_name}] Resize resolution: {resize_resolution}") 
+    else:
+        logger.warning(f"[{process_name}] No resize resolution found in config. Using original frame dimensions.")
+        resize_resolution = [original_width, original_height]
+
+    if resize_resolution[0] > original_width or resize_resolution[1] > original_height:
+        logger.warning(f"[{process_name}] Resize resolution is larger than original frame dimensions. Resizing to original dimensions.")
+        resize_resolution = [original_width, original_height]
+    else:
+        logger.info(f"[{process_name}] Resize resolution: {resize_resolution}")
+
     frame_counter = 0
+    last_frame_time = time.time()
     # Configure logging frequency for frames, defaulting to every 30 frames
     log_every_n_frames = config.get("log_every_n_frames", 30)
     
@@ -61,9 +81,14 @@ def frame_grabber_process(
                 logger.error(f"[{process_name}] Failed to read frame from video source: {video_source}. Breaking loop.")
                 break
             
+            current_time = time.time()
+            
+            # Resize the frame to the resize resolution, ensuring integer dimensions
+            frame = cv2.resize(frame, (int(resize_resolution[0]), int(resize_resolution[1])))
+
             # Get frame dimensions
             height, width, _ = frame.shape
-            
+
             # Encode the frame to JPEG format for efficient transfer
             success, encoded_image = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 100])
             if not success:
@@ -75,10 +100,13 @@ def frame_grabber_process(
             message = {
                 "frame_id": str(uuid.uuid4()), # Generate a unique ID for each frame
                 "camera_id": config.get("camera_id", "default_cam"), # Camera ID from config or default
-                "timestamp": time.time(), # Current timestamp for the frame
+                "timestamp": current_time, # Current timestamp for the frame
                 "frame_data_jpeg": jpeg_binary,
                 "frame_width": width,
                 "frame_height": height,
+                "og_frame_height": original_height,
+                "og_frame_width": original_width,
+                "og_fps": original_fps,  # Keep original FPS for video output
                 "source": video_source # Original video source identifier
             }
             
@@ -88,7 +116,10 @@ def frame_grabber_process(
                 frame_counter += 1
                 # Log frame processing status periodically
                 if frame_counter % log_every_n_frames == 0:
-                    logger.debug(f"[{process_name}] Frame {message['frame_id']} (count: {frame_counter}) put to queue. Current queue size: {output_queue.qsize()}.")
+                    elapsed_time = current_time - last_frame_time if frame_counter == log_every_n_frames else current_time - last_frame_time
+                    actual_fps = log_every_n_frames / elapsed_time if elapsed_time > 0 else 0
+                    logger.debug(f"[{process_name}] Frame {message['frame_id']} (count: {frame_counter}) put to queue. Queue size: {output_queue.qsize()}. Actual FPS: {actual_fps:.1f}")
+                    last_frame_time = current_time
             except Full:
                 # If the queue is full, log a warning and drop the current frame
                 logger.warning(f"[{process_name}] Output queue is full. Frame {message['frame_id']} dropped.")

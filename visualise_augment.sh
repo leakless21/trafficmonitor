@@ -1,0 +1,3 @@
+pixi run fast_plate_ocr visualize-augmentation --img-dir lp_data/preprocessed_dataset/train --columns 2 --show-original
+pixi run fast_plate_ocr valid --model lp_data/trainedmodel/1417-0.572.onnx --config-file lp_data/ocr.yaml --annotations lp_data/preprocessed_dataset2/valid_anotaciones.csv
+pixi run fast_plate_ocr visualize-predictions --model lp_data/trainedmodel/1417-0.572.keras --img-dir lp_data/preprocessed_dataset/train --config-file lp_data/ocr.yaml

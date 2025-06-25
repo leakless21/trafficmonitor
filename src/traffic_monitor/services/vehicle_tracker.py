@@ -201,6 +201,9 @@ def vehicle_tracker_process(config: Dict[str, Any], input_queue: Queue, output_q
                 frame_data_jpeg=jpeg_binary,
                 frame_height=vehicle_detection_message["frame_height"],
                 frame_width=vehicle_detection_message["frame_width"],
+                og_frame_height=vehicle_detection_message["og_frame_height"],
+                og_frame_width=vehicle_detection_message["og_frame_width"],
+                og_fps=vehicle_detection_message["og_fps"],
                 tracked_objects=tracked_objects
             )
             output_queue.put(output_message)

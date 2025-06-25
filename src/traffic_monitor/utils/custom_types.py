@@ -11,6 +11,9 @@ class FrameMessage(TypedDict):
     frame_data_jpeg: bytes # JPEG binary
     frame_height: int
     frame_width: int
+    og_frame_height: int
+    og_frame_width: int
+    og_fps: float
 
 # Example for Vehicle Detections (Matches your plan for VehicleDetector output)
 class Detection(TypedDict):

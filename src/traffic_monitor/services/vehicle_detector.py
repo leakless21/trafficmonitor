@@ -8,6 +8,7 @@ import ultralytics
 import cv2
 import numpy as np
 from loguru import logger
+import time
 
 from ..utils.custom_types import FrameMessage, VehicleDetectionMessage, Detection
 from ..utils.logging_config import setup_logging
@@ -130,60 +131,71 @@ def vehicle_detector_process(
             return # Exit if initialization fails
         
         while not shutdown_event.is_set():
-            logger.debug(f"[{process_name}] Attempting to get frame from input queue...")
             try:
                 # Attempt to get a frame message from the input queue with a timeout
                 frame_message: FrameMessage = input_queue.get(timeout=1)
-                logger.debug(f"[{process_name}] Received frame {frame_message.get('frame_id')} from input queue.")
-            except Empty:
-                # If the queue is empty, continue to the next iteration
-                logger.trace(f"[{process_name}] Input queue is empty. Waiting for frames.")
-                continue
-
-            # Check for a None message, which indicates a shutdown signal from the upstream process
-            if frame_message is None:
-                logger.warning(f"[{process_name}] Received None frame message. Shutting down.")
-                output_queue.put(None) # Propagate shutdown signal to downstream processes
-                break
-
-            # Decode the JPEG binary frame data into an OpenCV image array
-            jpeg_binary = frame_message["frame_data_jpeg"]
-            img_array = np.frombuffer(jpeg_binary, dtype=np.uint8)
-            frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-            logger.debug(f"[{process_name}] Decoded frame {frame_message.get('frame_id')}. Performing detection...")
-
-            # Perform vehicle detection on the current frame
-            detections = vehicle_detector.detect(frame)
-            
-            # Enhanced logging with class-specific information
-            if detections:
-                class_counts = {}
-                for det in detections:
-                    class_name = det["class_name"]
-                    class_counts[class_name] = class_counts.get(class_name, 0) + 1
                 
-                class_summary = ", ".join([f"{count} {class_name}{'s' if count > 1 else ''}" for class_name, count in class_counts.items()])
-                logger.debug(f"[{process_name}] Detected {len(detections)} objects in frame {frame_message['frame_id']}: {class_summary}")
-            else:
-                logger.debug(f"[{process_name}] No objects detected in frame {frame_message['frame_id']}")
+                # Check for shutdown signal
+                if frame_message is None:
+                    logger.info(f"[{process_name}] Received shutdown signal.")
+                    break
+                
+                # Log processing start for debugging
+                logger.debug(f"[{process_name}] Processing frame {frame_message['frame_id']}")
+                
+                # Decode the JPEG frame data back to an OpenCV image
+                jpeg_bytes = frame_message["frame_data_jpeg"]
+                frame = cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8), cv2.IMREAD_COLOR)
+                
+                if frame is None:
+                    logger.warning(f"[{process_name}] Failed to decode frame {frame_message['frame_id']}. Skipping.")
+                    continue
+                
+                # Perform vehicle detection on the frame
+                detections = vehicle_detector.detect(frame)
+                
+                # Enhanced logging with class-specific information
+                if detections:
+                    class_counts = {}
+                    for det in detections:
+                        class_name = det["class_name"]
+                        class_counts[class_name] = class_counts.get(class_name, 0) + 1
+                    
+                    class_summary = ", ".join([f"{count} {class_name}{'s' if count > 1 else ''}" for class_name, count in class_counts.items()])
+                    logger.debug(f"[{process_name}] Detected {len(detections)} objects in frame {frame_message['frame_id']}: {class_summary}")
+                else:
+                    logger.debug(f"[{process_name}] No objects detected in frame {frame_message['frame_id']}")
 
-            # Construct the output message with detection results
-            output_message: VehicleDetectionMessage = {
-                "frame_id": frame_message["frame_id"],
-                "frame_width": frame_message["frame_width"],
-                "frame_height": frame_message["frame_height"],
-                "camera_id": frame_message["camera_id"],
-                "timestamp": frame_message["timestamp"],
-                "frame_data_jpeg": frame_message["frame_data_jpeg"],
-                "detections": detections
-            }
-            
-            # Attempt to put the processed message into the output queue
-            try:
-                output_queue.put(output_message)
-            except Full:
-                # Log a warning if the output queue is full and drop the message
-                logger.warning(f"[{process_name}] Output queue is full. Dropping message.")
+                # Construct the output message with detection results
+                output_message: VehicleDetectionMessage = {
+                    "frame_id": frame_message["frame_id"],
+                    "frame_width": frame_message["frame_width"],
+                    "frame_height": frame_message["frame_height"],
+                    "og_frame_width": frame_message["og_frame_width"],
+                    "og_frame_height": frame_message["og_frame_height"],
+                    "og_fps": frame_message["og_fps"],
+                    "camera_id": frame_message["camera_id"],
+                    "timestamp": frame_message["timestamp"],
+                    "frame_data_jpeg": frame_message["frame_data_jpeg"],
+                    "detections": detections
+                }
+                
+                # Attempt to put the processed message into the output queue
+                try:
+                    output_queue.put(output_message, timeout=1)
+                except Full:
+                    # Log a warning if the output queue is full and drop the message
+                    logger.warning(f"[{process_name}] Output queue is full. Dropping frame {frame_message['frame_id']}.")
+                    continue
+                
+            except Empty:
+                # If no message is available, continue the loop to check the shutdown event
+                continue
+            except Exception as e:
+                # Log any unexpected errors but continue processing to prevent process crash
+                logger.error(f"[{process_name}] Error processing frame: {e}", exc_info=True)
+                # Add small delay to prevent tight error loops
+                time.sleep(0.1)
                 continue
     
     except KeyboardInterrupt:

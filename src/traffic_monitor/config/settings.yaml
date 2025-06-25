@@ -1,21 +1,22 @@
 frame_grabber:
-  video_source: "data/videos/input/platetest.mp4"
-  fps_limit: 30 # Example, might not be used initially
+  video_source: "data/videos/input/IMG_3637.MOV"
+  resize_resolution: [1280, 720]
+  log_every_n_frames: 60 # Log every 30 frames
 
 vehicle_detector:
-  model_path: "data/models/yolo11n.pt"
-  conf_threshold: 0.5
+  model_path: "data/models/best(8).pt"
+  conf_threshold: 0.6
   class_mapping:
-    0: "person"
-    1: "bicycle"
-    2: "car"
-    3: "motorcycle"
-    5: "bus"
-    7: "truck"
+    0: "bicycle"
+    1: "bike"
+    2: "bus"
+    3: "car"
+    4: "person"
+    5: "truck"
 
 vehicle_tracker:
-  tracker_type: "bytetrack"
-  half: false
+  tracker_type: "ocsort"
+  half: true
   device: "cpu"
   reid_model_path: None
   evolve_param_dict: None
@@ -32,25 +33,37 @@ loguru:
   log_file_overwrite: true
 
 lp_detector:
-  model_path: "data/models/plate_v8n.pt"
-  conf_threshold: 0.5
+  model_path: "data/models/lp.pt"
+  conf_threshold: 0.8
 
 ocr_reader:
   hub_model_name: "global-plates-mobile-vit-v2-model"
   device: "auto"
-  conf_threshold: 0.5
+  conf_threshold: 0.6
 
 vehicle_counter:
   counting_lines:
-    - # First line
-      - [0, 750]
-      - [1920, 750]
+    - # First line (horizontal across video at 69.4% height)
+      - [0.31, 0.22]
+      - [0.85, 0.33]
 
 visualizer:
   font: "FONT_HERSHEY_SIMPLEX" # Can use string name or integer (0)
   font_scale: 0.6
   font_thickness: 2
   ocr_duration: 3.0
+
+  # Counting line visualization settings
+  counting_lines: # Copy from vehicle_counter for visualization
+    - # First line (horizontal across video at 69.4% height)
+      - [0.31, 0.22]
+      - [0.85, 0.33]
+  counting_line_color: [0, 255, 255] # Yellow in BGR format
+  counting_line_thickness: 3
+
+  save_to_file: true
+  save_path: "data/videos/output/"
+  output_fourcc: "mp4v"
 
   # Modern, visually distinct color palette (BGR format for OpenCV)
   class_colors:

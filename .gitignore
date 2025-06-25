@@ -1,4 +1,3 @@
-
 # pixi environments
 .pixi
 *.egg-info
@@ -9,3 +8,17 @@
 
 #VSCode
 .vscode
+
+# Dataset and generated files
+lp_data/
+data/test_images/
+data/videos/
+output/
+logs/
+eval_all/
+model/
+ocr_dataset_processing.log
+paddleocr_processing.log
+VLPR/
+create_test_image.py
+examples/

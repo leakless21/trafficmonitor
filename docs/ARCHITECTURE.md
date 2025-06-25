@@ -79,3 +79,33 @@ The system utilizes `multiprocessing.Queue` for inter-process communication betw
   - **Input**: Receives `TrackedVehicleMessage` from `Vehicle Tracker` via an input queue.
   - **Output**: Sends `VehicleCountMessage` to `Main Supervisor` via an output queue.
 - **Dependency to other components**: Depends on `shapely` for geometric operations and `loguru` for logging. Receives data from `Vehicle Tracker`.
+
+### OCR Component
+
+**Purpose:** The `OCRReader` component is responsible for performing Optical Character Recognition (OCR) on image regions, specifically for license plates. It supports multiple OCR engines.
+
+**Area of Responsibility:**
+
+- Initializing selected OCR engine (e.g., FastPlateOCR, PaddleOCR) with specified configurations.
+- Processing image crops containing license plates to extract text and confidence scores.
+- Handling pre-processing and post-processing steps specific to each OCR engine.
+
+**Compute Requirements:**
+
+- Can be CPU or GPU bound depending on the OCR engine and its configuration.
+- Memory usage depends on image resolution and the complexity of the OCR model.
+
+**Storage Requirements:**
+
+- Requires access to OCR model weights (e.g., `data/models/plate_v8n.onnx`, `data/models/lp.pt`).
+- Requires access to OCR engine-specific configurations.
+
+**Interfaces:**
+
+- **Input:** Receives image crops (e.g., license plate regions) from `LPDetector` or other components via a multiprocessing queue.
+- **Output:** Sends `OCRResult` objects containing recognized text, confidence, and processing time to downstream processes (e.g., for visualization or data logging) via a multiprocessing queue.
+
+**Dependencies:**
+
+- **Internal:** `multiprocessing`, `cv2`, `numpy`, `loguru`, `pathlib`, `src.traffic_monitor.utils.custom_types`.
+- **External:** `fast_plate_ocr` or `paddleocr` libraries, depending on the chosen engine.

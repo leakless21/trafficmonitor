@@ -133,6 +133,8 @@ def lp_detector_process(
                         "frame_data_jpeg": message["frame_data_jpeg"],
                         "frame_height": message["frame_height"],
                         "frame_width": message["frame_width"],
+                        "og_frame_height": message["og_frame_height"],
+                        "og_frame_width": message["og_frame_width"],
                         "vehicle_id": vehicle["track_id"],
                         "vehicle_class": vehicle["class_name"],
                         "plate_bbox_original": final_lp_bbox,

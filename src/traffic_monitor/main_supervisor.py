@@ -59,6 +59,7 @@ def main():
 
     vc_config = config.get("vehicle_counter", {})
     vc_config["service_name"] = "VehicleCounter"
+    vc_config["loguru"] = loguru_config  # Pass logging config to vehicle counter
     logger.debug(f"VehicleCounter config: {vc_config}")
 
     vis_config = config.get("visualizer", {})
@@ -69,16 +70,17 @@ def main():
         logger.error("Failed to load configuration. Exiting.")
         return
 
-    frame_grabber_output_queue = mp.Queue(maxsize=500)
-    vehicle_detector_output_queue = mp.Queue(maxsize=500)
-    vehicle_tracker_output_queue = mp.Queue(maxsize=500)
-    lp_detector_output_queue = mp.Queue(maxsize=500)
-    ocr_reader_output_queue = mp.Queue(maxsize=500)
-    vehicle_counter_output_queue = mp.Queue(maxsize=500)
-    visualizer_input_queue = mp.Queue(maxsize=500)
+    # More conservative queue sizes to prevent backlog and process crashes
+    frame_grabber_output_queue = mp.Queue(maxsize=20)        # Smaller to apply backpressure early
+    vehicle_detector_output_queue = mp.Queue(maxsize=25)     # Reduced for stability  
+    vehicle_tracker_output_queue = mp.Queue(maxsize=40)      # Reduced main distribution buffer
+    lp_detector_output_queue = mp.Queue(maxsize=25)          # Reduced LP detection buffer
+    ocr_reader_output_queue = mp.Queue(maxsize=20)           # Keep OCR buffer smaller
+    vehicle_counter_output_queue = mp.Queue(maxsize=10)      # Counter updates are infrequent
+    visualizer_input_queue = mp.Queue(maxsize=30)            # Reduced visualization buffer
 
-    lp_detector_input_queue = mp.Queue(maxsize=500)
-    vehicle_counter_input_queue = mp.Queue(maxsize=500)
+    lp_detector_input_queue = mp.Queue(maxsize=25)           # Match LP detector capacity
+    vehicle_counter_input_queue = mp.Queue(maxsize=20)       # Match counter processing speed
 
     dist_process = mp.Process(
         target=distributor_process,

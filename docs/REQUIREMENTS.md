@@ -40,6 +40,39 @@
 - The system shall include track IDs and class information in vehicle crossing detection logs.
 - The system shall provide class-specific count summaries in detection and tracking logs.
 
+### FR7: Vehicle Counting
+
+- The system shall count vehicles crossing predefined counting lines.
+- The system shall use geometric line intersection to detect when a vehicle crosses a counting line.
+- The system shall maintain separate counts by vehicle class (car, truck, bus, etc.).
+- The system shall prevent double-counting of the same vehicle crossing the same line.
+- The system shall support multiple counting lines simultaneously.
+- The system shall provide counting line coordinates configuration via YAML settings.
+
+### FR8: Visualization and Display
+
+- The system shall display real-time video with tracking overlays using OpenCV.
+- The system shall draw vehicle bounding boxes with track IDs and class labels.
+- The system shall display counting lines on the video feed from the start of the application.
+- The system shall provide configurable appearance for counting lines (color, thickness).
+- The system shall label each counting line with a unique identifier.
+- The system shall display real-time vehicle counts and FPS information.
+- The system shall support display of OCR results for license plates when available.
+- The system shall provide visual feedback for all counting zones from the first frame.
+
+### FR9: OCR Processing
+
+- The system shall support processing images with multiple OCR engines (e.g., FastPlateOCR, PaddleOCR).
+- The system shall be able to extract text and confidence scores from processed images.
+- The system shall handle different OCR engine configurations.
+- The system shall log errors encountered during OCR processing.
+
+### FR10: Data Export
+
+- The system shall support exporting data to various formats (e.g., CSV, JSON, XML).
+- The system shall allow for selective export of data based on vehicle class or time range.
+- The system shall provide detailed export logs for tracking and counting activities.
+
 ## Non-Functional Requirements
 
 ### NFR1: Performance

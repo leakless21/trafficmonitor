@@ -1,6 +1,7 @@
 import multiprocessing as mp
 from multiprocessing.synchronize import Event
 from multiprocessing.queues import Queue
+from pathlib import Path
 from queue import Empty
 from typing import Any, Dict
 from loguru import logger
@@ -11,6 +12,7 @@ import time
 from collections import deque
 
 from ..utils.custom_types import TrackedVehicleMessage, VehicleCountMessage, OCRResultMessage, TrackedObject
+from ..utils.utils import relative_to_absolute_coords
 from ..utils.logging_config import setup_logging
 
 class Visualizer:
@@ -32,12 +34,31 @@ class Visualizer:
         self.colors = self._parse_colors(config.get("class_colors", {}))
         self.default_color = self._parse_color(config.get("default_color", [255, 255, 255]))
 
+        # Store counting lines for visualization (now in relative coordinates)
+        self.counting_lines_relative = config.get("counting_lines", [])
+        self.counting_line_color = self._parse_color(config.get("counting_line_color", [0, 255, 255]))  # Yellow by default
+        self.counting_line_thickness = config.get("counting_line_thickness", 3)
+        
         self.latest_ocr_results = {}
         self.latest_vehicle_count: VehicleCountMessage | Dict = {}
         self.fps_calculator = deque(maxlen=60)
+        
+        # Add timing controls for consistent video output
+        self.last_frame_timestamp = None
+        self.frame_count = 0
+        self.video_start_time = None
+        
         logger.info(f"[Visualizer] Visualizer initialized with font: {self.font}, font scale: {self.font_scale}, font thickness: {self.font_thickness}")
+        logger.info(f"[Visualizer] Loaded {len(self.counting_lines_relative)} counting line(s) for visualization")
         logger.debug(f"[Visualizer] Parsed colors: {self.colors}")
-    
+        self.save_to_file = config.get("save_to_file", False)
+        self.video_writer: cv2.VideoWriter | None = None
+
+        if self.save_to_file:
+            self.output_path = config.get("save_path", "data/videos/output/")
+            self.output_fourcc = config.get("output_fourcc", "mp4v")
+            logger.info(f"[Visualizer] Saving to file: {self.output_path} with fourcc: {self.output_fourcc}")
+            
     def _parse_color(self, color_value):
         """Parse color value from various formats to tuple."""
         if isinstance(color_value, (list, tuple)):
@@ -65,6 +86,23 @@ class Visualizer:
             parsed_colors[class_name] = self._parse_color(color_value)
         return parsed_colors
     
+    def _init_video_writer(self, frame_width: int, frame_height: int, og_fps: float):
+        filename = f"output_{time.strftime('%Y%m%d_%H%M%S')}.mp4"
+        filepath = Path(self.output_path) / filename
+        
+        # Ensure output directory exists
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        
+        fourcc = cv2.VideoWriter.fourcc(*self.output_fourcc)
+        self.video_writer = cv2.VideoWriter(str(filepath), fourcc, og_fps, (frame_width, frame_height))
+
+        if self.video_writer.isOpened():
+            logger.info(f"[Visualizer] Successfully initialized video writer to {filepath}")
+        else:
+            logger.error(f"[Visualizer] Failed to initialize video writer to {filepath}")
+            logger.error(f"[Visualizer] Debug info - fourcc: {self.output_fourcc}, fps: {og_fps}, dimensions: {frame_width}x{frame_height}")
+            self.video_writer = None
+
     def _draw_vehicle_info(self, image: np.ndarray, vehicle: TrackedObject):
         x1, y1, x2, y2 = vehicle["bbox_xyxy"]
         class_name = vehicle["class_name"]
@@ -96,32 +134,80 @@ class Visualizer:
         cv2.putText(image, fps_text, (10, 30), self.font, self.font_scale, (255, 255, 255), self.font_thickness)
 
         # Draw vehicle counts
-        if self.latest_vehicle_count:
-            total = self.latest_vehicle_count.get("total_count", 0)
-            by_class = self.latest_vehicle_count.get("class_counts", {})
+        #if self.latest_vehicle_count:
+        total = self.latest_vehicle_count.get("total_count", 0)
+        by_class = self.latest_vehicle_count.get("class_counts", {})
 
-            # Draw total count
-            count_text = f"Total: {total}"
-            cv2.putText(image, count_text, (10, 70), self.font, self.font_scale, (255, 255, 255), self.font_thickness)
+        # Draw total count
+        count_text = f"Total: {total}"
+        cv2.putText(image, count_text, (10, 70), self.font, self.font_scale, (255, 255, 255), self.font_thickness)
 
-            # Draw class counts
-            index = 0
-            for class_name, count in by_class.items():
-                class_text = f"{class_name}: {count}"
-                cv2.putText(image, class_text, (10, 100 + (index * 20)), self.font, self.font_scale, (255, 255, 255), self.font_thickness)
-                index += 1
-    
+        # Draw class counts
+        index = 0
+        for class_name, count in by_class.items():
+            class_text = f"{class_name}: {count}"
+            cv2.putText(image, class_text, (10, 100 + (index * 20)), self.font, self.font_scale, (255, 255, 255), self.font_thickness)
+            index += 1
+
+    def _draw_counting_lines(self, image: np.ndarray, frame_width: int, frame_height: int):
+        """Draw counting lines on the frame using relative coordinates."""
+        if not self.counting_lines_relative:
+            return
+        
+        # Convert all relative lines to absolute coordinates at once
+        counting_lines_absolute = relative_to_absolute_coords(
+            self.counting_lines_relative, frame_width, frame_height
+        )
+        
+        for i, absolute_line in enumerate(counting_lines_absolute):
+            if len(absolute_line) >= 2:
+                start_abs = (absolute_line[0][0], absolute_line[0][1])
+                end_abs = (absolute_line[1][0], absolute_line[1][1])
+                
+                # Draw the line
+                cv2.line(image, start_abs, end_abs, self.counting_line_color, self.counting_line_thickness)
+                
     def process_frame(self, frame_msg: TrackedVehicleMessage) -> np.ndarray:
         jpeg_bytes = frame_msg["frame_data_jpeg"]
         frame = cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8), cv2.IMREAD_COLOR)
-        self.fps_calculator.append(time.time())
+        current_time = time.time()
+        self.fps_calculator.append(current_time)
+
+        # Initialize video timing on first frame
+        if self.video_start_time is None:
+            self.video_start_time = current_time
+            self.last_frame_timestamp = frame_msg["timestamp"]
+
+        if self.save_to_file and self.video_writer is None:
+            self._init_video_writer(frame_msg["frame_width"], frame_msg["frame_height"], frame_msg["og_fps"])
 
         for vehicle in frame_msg["tracked_objects"]:
             self._draw_vehicle_info(frame, vehicle)
         
         self._draw_stats(frame)
+        self._draw_counting_lines(frame, frame_msg["frame_width"], frame_msg["frame_height"])
+
+        # Write every processed frame to maintain proper video timing
+        if self.video_writer:
+            self.video_writer.write(frame)
+            self.frame_count += 1
+            
+            # Log frame writing progress periodically
+            if self.frame_count % 100 == 0:
+                elapsed_time = current_time - self.video_start_time
+                expected_frames = elapsed_time * frame_msg["og_fps"]
+                frame_ratio = self.frame_count / expected_frames if expected_frames > 0 else 1.0
+                logger.debug(f"[Visualizer] Written {self.frame_count} frames. Frame ratio: {frame_ratio:.2f} (1.0 = real-time)")
+
         return frame
     
+    def release(self):
+        if self.video_writer:
+            logger.debug(f"[Visualizer] Releasing video writer...")
+            self.video_writer.release()
+            self.video_writer = None
+            logger.debug(f"[Visualizer] Video writer released.")
+
 def visualize_process(config: dict, tracking_queue: Queue, OCR_queue: Queue, vehicle_count_queue: Queue, shutdown_event: Event):
     # Setup logging for this process
     try:
@@ -163,10 +249,6 @@ def visualize_process(config: dict, tracking_queue: Queue, OCR_queue: Queue, veh
                 logger.debug(f"[Visualizer] No tracking message received, continuing...")
                 if shutdown_event.is_set():
                     break
-                continue
-            
-            if tracking_msg is None:
-                logger.debug(f"[Visualizer] Received None tracking message, continuing...")
                 continue
             
             try:
@@ -233,6 +315,7 @@ def visualize_process(config: dict, tracking_queue: Queue, OCR_queue: Queue, veh
     finally:
         logger.info(f"[Visualizer] Cleaning up visualizer process...")
         try:
+            visualizer.release()
             cv2.destroyAllWindows()
             logger.info(f"[Visualizer] OpenCV windows destroyed.")
         except Exception as cleanup_error:
