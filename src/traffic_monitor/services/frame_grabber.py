@@ -71,15 +71,21 @@ def frame_grabber_process(
     last_frame_time = time.time()
     # Configure logging frequency for frames, defaulting to every 30 frames
     log_every_n_frames = config.get("log_every_n_frames", 30)
-    
+    process_every_n_frame = max(1, config.get("process_every_n_frame", 1))
+    logger.info(f"[{process_name}] Processing every {process_every_n_frame} frames.")
+
     try:
         # Main loop: continue until a shutdown signal is received
         while not shutdown_event.is_set():
             ret, frame = video_capture.read()
+            frame_counter += 1
             # If frame reading fails, log an error and break the loop
             if not ret:
                 logger.error(f"[{process_name}] Failed to read frame from video source: {video_source}. Breaking loop.")
                 break
+            
+            if (frame_counter - 1) % process_every_n_frame != 0:
+                continue
             
             current_time = time.time()
             
@@ -113,12 +119,12 @@ def frame_grabber_process(
             try:
                 # Attempt to put the message into the output queue with a timeout
                 output_queue.put(message, timeout=0.5)
-                frame_counter += 1
                 # Log frame processing status periodically
-                if frame_counter % log_every_n_frames == 0:
-                    elapsed_time = current_time - last_frame_time if frame_counter == log_every_n_frames else current_time - last_frame_time
-                    actual_fps = log_every_n_frames / elapsed_time if elapsed_time > 0 else 0
-                    logger.debug(f"[{process_name}] Frame {message['frame_id']} (count: {frame_counter}) put to queue. Queue size: {output_queue.qsize()}. Actual FPS: {actual_fps:.1f}")
+                if (frame_counter - 1) // process_every_n_frame % log_every_n_frames == 0:
+                    elapsed_time = current_time - last_frame_time
+                    # Calculate actual_fps based on processed frames, not read frames
+                    actual_fps = (log_every_n_frames * process_every_n_frame) / elapsed_time if elapsed_time > 0 else 0
+                    logger.debug(f"[{process_name}] Frame {message['frame_id']} (raw count: {frame_counter}, processed count: {(frame_counter - 1) // process_every_n_frame + 1}) put to queue. Queue size: {output_queue.qsize()}. Actual FPS: {actual_fps:.1f}")
                     last_frame_time = current_time
             except Full:
                 # If the queue is full, log a warning and drop the current frame

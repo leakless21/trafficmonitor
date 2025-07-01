@@ -2,6 +2,7 @@ frame_grabber:
   video_source: "data/videos/input/IMG_3637.MOV"
   resize_resolution: [1280, 720]
   log_every_n_frames: 60 # Log every 30 frames
+  process_every_n_frame: 3 # Process every frame by default
 
 vehicle_detector:
   model_path: "data/models/best(8).pt"
@@ -37,6 +38,9 @@ lp_detector:
   conf_threshold: 0.8
 
 ocr_reader:
+  backend: "fast_plate_ocr" # or "paddleocr"
+  lang: "en" # Language code for PaddleOCR backend
+  use_gpu: false # Whether to enable GPU for PaddleOCR backend
   hub_model_name: "global-plates-mobile-vit-v2-model"
   device: "auto"
   conf_threshold: 0.6

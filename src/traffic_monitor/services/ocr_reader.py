@@ -2,67 +2,139 @@ import multiprocessing as mp
 from multiprocessing.synchronize import Event
 from multiprocessing.queues import Queue
 from queue import Empty, Full
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 
 import cv2
 import numpy as np
 from loguru import logger
 
 from fast_plate_ocr import ONNXPlateRecognizer
+
+# ADD IMPORT INSIDE TRY to avoid if not installed
+try:
+    from paddleocr import PaddleOCR  # type: ignore
+except ImportError:  # pragma: no cover
+    PaddleOCR = None  # type: ignore
+
 from ..utils.custom_types import PlateDetectionMessage, OCRResultMessage
 
 class OCRReader:
     def __init__(self, config: Dict[str, Any]):
-        hub_model_name = config.get("hub_model_name", "global-plates-mobile-vit-v2-model")
-        device = config.get("device", "auto")
+        self.backend: str = config.get("backend", "fast_plate_ocr").lower()
         self.conf_threshold = config.get("conf_threshold", 0.5)
 
-        try:
-            self.reader = ONNXPlateRecognizer(hub_ocr_model=hub_model_name, device=device)
-            logger.info(f"[OCRReader] OCR reader initialized with model: {hub_model_name} on device: {device}")
-        except Exception as e:
-            logger.error(f"[OCRReader] Failed to initialize OCR reader: {e}")
-            raise
+        if self.backend == "fast_plate_ocr":
+            hub_model_name = config.get("hub_model_name", "global-plates-mobile-vit-v2-model")
+            device = config.get("device", "auto")
+
+            try:
+                self.reader = ONNXPlateRecognizer(hub_ocr_model=hub_model_name, device=device)
+                logger.info(f"[OCRReader] FastPlateOCR initialized with model: {hub_model_name} on device: {device}")
+            except Exception as e:
+                logger.error(f"[OCRReader] Failed to initialize FastPlateOCR reader: {e}")
+                raise
+        elif self.backend == "paddleocr":
+            if PaddleOCR is None:
+                raise ImportError("paddleocr package is not installed. Please install paddleocr to use this backend.")
+            # Map config keys for clarity
+            use_gpu: bool = bool(config.get("use_gpu", False))
+            lang: str = str(config.get("lang", "en"))
+            try:
+                # Initialize PaddleOCR with recommended v3 API
+                self.reader = PaddleOCR(
+                    use_doc_orientation_classify=False,
+                    use_doc_unwarping=False,
+                    use_textline_orientation=False,
+                    lang=lang,
+                    use_gpu=use_gpu,
+                    text_detection_model_name="PP-OCRv5_mobile_det",
+                    text_recognition_model_name="PP-OCRv5_mobile_rec",
+                )
+                logger.info(f"[OCRReader] PaddleOCR initialized with language: {lang} | GPU: {use_gpu}")
+            except Exception as e:
+                logger.error(f"[OCRReader] Failed to initialize PaddleOCR reader: {e}")
+                raise
+        else:
+            raise ValueError(f"Unsupported OCR backend: {self.backend}")
+
     def _preprocess_plate(self, plate_image: np.ndarray) -> np.ndarray:
-        return cv2.cvtColor(plate_image, cv2.COLOR_BGR2GRAY)
-        
-    def read_plate(self, plate_image: np.ndarray) -> Tuple[str, float] | None:
+        if self.backend == "fast_plate_ocr":
+            return cv2.cvtColor(plate_image, cv2.COLOR_BGR2GRAY)
+        # No preprocessing required for paddleocr (expects BGR/RGB image)
+        return plate_image
+
+    def _read_plate_fast(self, plate_image: np.ndarray) -> Optional[Tuple[str, float]]:
         gray_plate = self._preprocess_plate(plate_image)
         try:
-            raw_results = self.reader.run(gray_plate, return_confidence=True)
+            raw_results = self.reader.run(gray_plate, return_confidence=True)  # type: ignore[attr-defined]
         except Exception as e:
-            logger.error(f"Failed to read plate: {e}")
+            logger.error(f"Failed to read plate using FastPlateOCR: {e}")
             return None
-        
-        if not raw_results:
-            logger.warning("No plate detected in the frame")
+
+        if not raw_results or not isinstance(raw_results, tuple) or len(raw_results) != 2:
+            logger.debug("FastPlateOCR returned no valid results")
             return None
-        
-        if not isinstance(raw_results, tuple) or len(raw_results) != 2:
-            logger.error(f"Invalid results format from OCR reader: type={type(raw_results)}, length={len(raw_results)}")
-            return None
-        
+
         plate_texts, confidence = raw_results
-        
-        # Check if the plate text is valid
+
         if not plate_texts or confidence.size == 0:
-            logger.warning("Plate text is too short to be valid")
             return None
-        
+
         plate_text = plate_texts[0]
         char_confidence = confidence[0]
         overall_confidence = np.mean(char_confidence) if char_confidence.size > 0 else 0.0
-        
-        if len(plate_text) < 3:
-            logger.warning("Plate text is too short to be valid")
+
+        if len(plate_text) < 3 or overall_confidence < self.conf_threshold:
             return None
-        # Check if the confidence is above the threshold
-        if overall_confidence < self.conf_threshold:
-            logger.debug(f"OCR result '{plate_text}' with confidence {overall_confidence} below threshold {self.conf_threshold}")
+
+        return plate_text, float(overall_confidence)
+
+    def _read_plate_paddle(self, plate_image: np.ndarray) -> Optional[Tuple[str, float]]:
+        try:
+            results = self.reader.predict(plate_image)  # type: ignore[attr-defined]
+        except Exception as e:
+            logger.error(f"Failed to read plate using PaddleOCR: {e}")
             return None
-        
-        # Return the OCR result
-        return (plate_text, float(overall_confidence))
+
+        if not results:
+            return None
+
+        # PaddleOCR v3 returns list with dict entries
+        ocr_result = results[0]
+        rec_texts = ocr_result.get("rec_texts", [])
+        rec_scores = ocr_result.get("rec_scores", [])
+
+        if not rec_texts or not rec_scores:
+            return None
+
+        cleaned_results: list[Tuple[str, float]] = []
+        for text, conf in zip(rec_texts, rec_scores):
+            # ensure numeric confidence (could be list for each char)
+            if isinstance(conf, (list, tuple, np.ndarray)):
+                conf_value = float(np.mean(conf)) if len(conf) else 0.0
+            else:
+                conf_value = float(conf)
+
+            if conf_value >= self.conf_threshold:
+                cleaned_text = "".join(c for c in text if c.isalnum())
+                if cleaned_text:
+                    cleaned_results.append((cleaned_text, conf_value))
+
+        if not cleaned_results:
+            return None
+
+        # Select best candidate: longest text then highest confidence
+        best_text, best_conf = max(cleaned_results, key=lambda x: (len(x[0]), x[1]))
+        return best_text, best_conf
+
+    def read_plate(self, plate_image: np.ndarray) -> Tuple[str, float] | None:
+        if self.backend == "fast_plate_ocr":
+            return self._read_plate_fast(plate_image)
+        elif self.backend == "paddleocr":
+            return self._read_plate_paddle(plate_image)
+        else:
+            logger.error(f"Unsupported backend during inference: {self.backend}")
+            return None
     
 def ocr_reader_process(config: Dict[str, Any], lp_detector_output_queue: Queue, ocr_reader_output_queue: Queue, shutdown_event: Event):
     from ..utils.logging_config import setup_logging

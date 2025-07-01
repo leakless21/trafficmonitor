@@ -1,5 +1,43 @@
 ## Architecture Design and Deployment Considerations
 
+### FrameGrabber Component
+
+**Purpose:** The `FrameGrabber` component is responsible for ingesting video streams and providing raw frames to downstream components. It also supports optional frame skipping to reduce processing load.
+
+**Area of Responsibility:**
+
+- Capturing video frames from various sources (local files, IP cameras).
+- Resizing frames to a configurable resolution.
+- Encoding frames to JPEG for efficient inter-process transfer.
+- Assigning unique IDs and timestamps to each frame.
+- Implementing configurable frame skipping based on `process_every_n_frame`.
+
+**Compute Requirements:**
+
+- Primarily CPU-bound due to video decoding and image resizing/encoding.
+- Performance is directly related to video resolution and frame rate.
+
+**Storage Requirements:**
+
+- No persistent storage required; frames are processed in-memory and passed via queues.
+
+**Interfaces:**
+
+- **Input:** Configured `video_source` path or camera index.
+- **Output:** Sends `FrameMessage` objects to the `VehicleDetector` process via a multiprocessing queue. Each message contains JPEG-encoded frame data, metadata, and unique identifiers.
+
+**Dependencies:**
+
+- **Internal:** `multiprocessing`, `cv2`, `loguru`, `src.traffic_monitor.utils.logging_config`.
+- **External:** `opencv-python` for video capture and image manipulation.
+
+**Configuration:**
+
+- `video_source` (str): Path to video file or camera index.
+- `resize_resolution` (list): Target resolution for frames (e.g., `[1280, 720]`).
+- `log_every_n_frames` (int): Frequency for logging frame processing status.
+- `process_every_n_frame` (int): Specifies how many frames to skip (e.g., `1` for no skipping, `2` to process every other frame). Default is 1.
+
 ### VehicleTracker Component
 
 **Purpose:** The `VehicleTracker` component is responsible for managing vehicle tracking logic using the BoxMOT library. It initializes the tracker and processes raw detections from the `VehicleDetector` into tracked objects.
@@ -82,7 +120,7 @@ The system utilizes `multiprocessing.Queue` for inter-process communication betw
 
 ### OCR Component
 
-**Purpose:** The `OCRReader` component is responsible for performing Optical Character Recognition (OCR) on image regions, specifically for license plates. It supports multiple OCR engines.
+**Purpose:** The `OCRReader` component is responsible for performing Optical Character Recognition (OCR) on image regions, specifically for license plates. It supports multiple OCR engines selectable at runtime via the `backend` parameter ("fast_plate_ocr" or "paddleocr").
 
 **Area of Responsibility:**
 

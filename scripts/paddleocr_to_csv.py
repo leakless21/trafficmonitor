@@ -47,7 +47,9 @@ def initialize_ocr(use_gpu: bool = False, lang: str = 'en') -> PaddleOCR:
     """
     # Initialize PaddleOCR with v3.x compatible parameters
     return PaddleOCR(
-        use_textline_orientation=True,  # Enable text line orientation classification
+        use_doc_orientation_classify=False,
+        use_doc_unwarping=False,
+        use_textline_orientation=False,
         lang=lang,
         text_detection_model_name="PP-OCRv5_mobile_det",
         text_recognition_model_name="PP-OCRv5_mobile_rec"

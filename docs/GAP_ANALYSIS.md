@@ -554,3 +554,43 @@ WARNING: Output video is significantly shorter - indicates frame dropping!
    - Process priority adjustments
    - Hardware-specific optimizations (GPU utilization)
    - Frame skip strategies that maintain timing consistency
+
+## Performance Optimization Features
+
+### Frame Skipping Implementation
+
+**Feature**: Configurable frame skipping to reduce processing load and improve real-time performance on resource-constrained systems.
+
+**Implementation**: ✅ **COMPLETED** - Added `process_every_n_frame` configuration option to FrameGrabber service.
+
+**Affected Files**:
+
+- `src/traffic_monitor/config/settings.yaml` ✅ **ADDED** - Configuration parameter
+- `src/traffic_monitor/services/frame_grabber.py:74-87` ✅ **IMPLEMENTED** - Frame skipping logic
+- `test/services/test_frame_grabber.py` ✅ **TESTED** - Comprehensive unit tests
+
+**Status**: ✅ **COMPLETED** - Feature fully implemented with comprehensive testing.
+
+**Configuration**:
+
+```yaml
+frame_grabber:
+  process_every_n_frame: 1 # Process every frame (default)
+  # process_every_n_frame: 2  # Process every 2nd frame (50% reduction)
+  # process_every_n_frame: 3  # Process every 3rd frame (67% reduction)
+```
+
+**Implementation Details**:
+
+- Frames are still read from the video source but only processed and queued at the configured interval
+- Frame counter increments for all read frames, ensuring proper frame numbering
+- Skip logic: `(frame_counter - 1) % process_every_n_frame != 0` → skip processing
+- Maintains temporal consistency while reducing computational load
+- Tested scenarios: no skipping (1), every 2nd frame (2), queue handling, error conditions
+
+**Benefits**:
+
+- Reduces memory usage in inter-process queues
+- Lowers CPU/GPU load for detection and tracking
+- Enables real-time performance on modest hardware
+- Configurable based on system capabilities and requirements

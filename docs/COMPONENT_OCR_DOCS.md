@@ -84,25 +84,26 @@ This service integrates with the `main_supervisor.py` and is responsible for man
 
 ### Configuration
 
-The OCR component's behavior is primarily controlled via the `settings.yaml` file, under a dedicated `ocr_settings` section.
-
-- **Example `ocr_settings` in `settings.yaml`:**
+The OCR component is configured via the `ocr_reader` section in `src/traffic_monitor/config/settings.yaml`.
 
 ```yaml
-ocr_settings:
-  engine: "paddleocr" # or "fast_plate_ocr"
-  # Common OCR parameters
+ocr_reader:
+  # Backend can be "fast_plate_ocr" (default) or "paddleocr"
+  backend: "paddleocr"
+
+  # --- Backend-agnostic parameters ---
   conf_threshold: 0.5
 
-  # PaddleOCR specific parameters
-  paddleocr_config:
-    lang: "en" # "ch" for Chinese, etc.
+  # --- PaddleOCR-specific parameters ---
+  lang: "en" # Language for recognition
+  use_gpu: false # Set to true if running with CUDA-enabled PaddlePaddle
 
-  # FastPlateOCR specific parameters
-  fast_plate_ocr_config:
-    hub_model_name: "global-plates-mobile-vit-v2-model"
-    device: "auto" # "cpu" or "cuda"
+  # --- FastPlateOCR-specific parameters ---
+  hub_model_name: "global-plates-mobile-vit-v2-model"
+  device: "auto" # "cpu" | "cuda" | "auto"
 ```
+
+If `backend` is omitted the system defaults to `fast_plate_ocr` to preserve backward compatibility. When `paddleocr` is chosen the `lang` and `use_gpu` flags are passed directly to the `PaddleOCR` constructor.
 
 ### Data Flow
 

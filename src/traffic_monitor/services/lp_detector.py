@@ -124,7 +124,7 @@ def lp_detector_process(
                     final_lp_x2 = bbox[0] + lp_x2_crop
                     final_lp_y2 = bbox[1] + lp_y2_crop
 
-                    final_lp_bbox = [int(c) for c in [final_lp_x1, final_lp_y1, final_lp_x2, final_lp_y2]]
+                    final_lp_bbox = [int(coord) for coord in (final_lp_x1, final_lp_y1, final_lp_x2, final_lp_y2)]
 
                     plate_message: PlateDetectionMessage = {
                         "frame_id": message["frame_id"],
@@ -135,13 +135,14 @@ def lp_detector_process(
                         "frame_width": message["frame_width"],
                         "og_frame_height": message["og_frame_height"],
                         "og_frame_width": message["og_frame_width"],
+                        "og_fps": message["og_fps"],  # Added missing required field
                         "vehicle_id": vehicle["track_id"],
                         "vehicle_class": vehicle["class_name"],
                         "plate_bbox_original": final_lp_bbox,
-                        "plate_confidence": lp_confidence
+                        "plate_confidence": float(lp_confidence)  # Ensure float type
                     }
 
-                    logger.debug(f"[LPDetectorProcess] Found plate for vehicle {vehicle['track_id']} with confidence {lp_confidence}")
+                    logger.debug(f"[LPDetectorProcess] Found plate for vehicle {vehicle['track_id']} with confidence {lp_confidence:.2f}")
                     try:
                         output_queue.put(plate_message)
                     except Full:

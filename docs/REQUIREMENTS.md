@@ -4,6 +4,7 @@
 
 - The system shall be able to ingest video streams from various sources (e.g., local video files, IP cameras).
 - The system shall decode video frames for further processing.
+- The system shall support configurable frame skipping to optimize performance.
 
 ### FR2: Vehicle Detection
 
