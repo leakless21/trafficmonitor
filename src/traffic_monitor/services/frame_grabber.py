@@ -5,7 +5,7 @@ import base64
 import multiprocessing as mp
 from loguru import logger
 from typing import Any, Dict
-from queue import Full
+from queue import Full, Empty
 from multiprocessing.queues import Queue
 from multiprocessing.synchronize import Event
 from ..utils.logging_config import setup_logging
@@ -29,50 +29,44 @@ def frame_grabber_process(
         shutdown_event (Event): A multiprocessing event used to signal the process to terminate.
     """
     # Initialize logging specifically for this child process to ensure proper log handling
-    setup_logging()
+    setup_logging(config.get("loguru"))
     
     process_name = mp.current_process().name
-    logger.info(f"[{process_name}] Frame Grabber process started. Config: {config}")
     
     video_source = config.get("video_source")
     if not video_source:
-        logger.error(f"[{process_name}] No video source found in config. Exiting frame grabber process.")
+        logger.error(f"No video source found in config. Exiting frame grabber process.")
         return
     
-    logger.info(f"[{process_name}] Attempting to open video source: {video_source}")
+    logger.info(f"Opening video source: {video_source}")
     video_capture = cv2.VideoCapture(video_source)
     
     # Check if the video source was opened successfully
     if not video_capture.isOpened():
-        logger.error(f"[{process_name}] Failed to open video source: {video_source}. Exiting.")
+        logger.error(f"Failed to open video source: {video_source}")
         return
-    logger.info(f"[{process_name}] Video source opened successfully: {video_source}")
 
     # Get the original frame dimensions
     original_height, original_width = video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT), video_capture.get(cv2.CAP_PROP_FRAME_WIDTH)
     original_fps = video_capture.get(cv2.CAP_PROP_FPS)
-    logger.info(f"[{process_name}] Original frame dimensions: {original_width}x{original_height} at {original_fps} FPS")
     
     # Get the resize resolution
     resize_resolution = config.get("resize_resolution", [1920, 1080])
-    if resize_resolution:
-        logger.info(f"[{process_name}] Resize resolution: {resize_resolution}") 
-    else:
-        logger.warning(f"[{process_name}] No resize resolution found in config. Using original frame dimensions.")
+    if not resize_resolution:
+        logger.warning("No resize resolution found in config. Using original frame dimensions.")
         resize_resolution = [original_width, original_height]
 
     if resize_resolution[0] > original_width or resize_resolution[1] > original_height:
-        logger.warning(f"[{process_name}] Resize resolution is larger than original frame dimensions. Resizing to original dimensions.")
+        logger.warning("Resize resolution larger than original. Using original dimensions.")
         resize_resolution = [original_width, original_height]
-    else:
-        logger.info(f"[{process_name}] Resize resolution: {resize_resolution}")
+
+    process_every_n_frame = max(1, config.get("process_every_n_frame", 1))
+    logger.info(f"Frame grabber started: {original_width}x{original_height}@{original_fps}fps -> {resize_resolution[0]}x{resize_resolution[1]}, processing every {process_every_n_frame} frames")
 
     frame_counter = 0
     last_frame_time = time.time()
     # Configure logging frequency for frames, defaulting to every 30 frames
     log_every_n_frames = config.get("log_every_n_frames", 30)
-    process_every_n_frame = max(1, config.get("process_every_n_frame", 1))
-    logger.info(f"[{process_name}] Processing every {process_every_n_frame} frames.")
 
     try:
         # Main loop: continue until a shutdown signal is received
@@ -81,7 +75,7 @@ def frame_grabber_process(
             frame_counter += 1
             # If frame reading fails, log an error and break the loop
             if not ret:
-                logger.error(f"[{process_name}] Failed to read frame from video source: {video_source}. Breaking loop.")
+                logger.error(f"Failed to read frame from video source: {video_source}")
                 break
             
             if (frame_counter - 1) % process_every_n_frame != 0:
@@ -98,7 +92,7 @@ def frame_grabber_process(
             # Encode the frame to JPEG format for efficient transfer
             success, encoded_image = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 100])
             if not success:
-                logger.warning(f"[{process_name}] Failed to encode frame to JPEG. Skipping this frame.")
+                logger.warning("Failed to encode frame to JPEG. Skipping this frame.")
                 continue
             jpeg_binary = encoded_image.tobytes()
             
@@ -117,34 +111,40 @@ def frame_grabber_process(
             }
             
             try:
-                # Attempt to put the message into the output queue with a timeout
-                output_queue.put(message, timeout=0.5)
+                # Drop old frame if queue is full, then put the new frame (non-blocking real-time behavior)
+                try:
+                    output_queue.get_nowait()  # Remove old frame if queue is full
+                except Empty:
+                    pass  # Queue was empty, which is fine
+                
+                output_queue.put_nowait(message)  # Put new frame without blocking
+                
                 # Log frame processing status periodically
                 if (frame_counter - 1) // process_every_n_frame % log_every_n_frames == 0:
                     elapsed_time = current_time - last_frame_time
                     # Calculate actual_fps based on processed frames, not read frames
                     actual_fps = (log_every_n_frames * process_every_n_frame) / elapsed_time if elapsed_time > 0 else 0
-                    logger.debug(f"[{process_name}] Frame {message['frame_id']} (raw count: {frame_counter}, processed count: {(frame_counter - 1) // process_every_n_frame + 1}) put to queue. Queue size: {output_queue.qsize()}. Actual FPS: {actual_fps:.1f}")
+                    logger.debug(f"Processed {(frame_counter - 1) // process_every_n_frame + 1} frames. Queue size: {output_queue.qsize()}. FPS: {actual_fps:.1f}")
                     last_frame_time = current_time
             except Full:
-                # If the queue is full, log a warning and drop the current frame
-                logger.warning(f"[{process_name}] Output queue is full. Frame {message['frame_id']} dropped.")
+                # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
+                logger.warning(f"Output queue full. Frame dropped.")
                 continue
     except KeyboardInterrupt:
-        logger.info(f"[{process_name}] KeyboardInterrupt received. Shutting down.")
+        logger.info("KeyboardInterrupt received. Shutting down.")
         shutdown_event.set()
         if not output_queue.full():
             try:
                 output_queue.put(None, timeout=0.1) # Signal downstream to stop gracefully
             except Exception as e:
-                logger.warning(f"[{process_name}] Could not put None to output_queue on shutdown: {e}")
+                logger.warning(f"Could not put None to output_queue on shutdown: {e}")
     except Exception as e:
         # Catch any unexpected exceptions and log them with traceback information
-        logger.exception(f"[{process_name}] Error in frame grabber process: {e}")
+        logger.exception(f"Error in frame grabber process: {e}")
         raise # Re-raise the exception to ensure the process terminates if an unrecoverable error occurs
     finally:
         # Ensure the video capture object is released when the process exits
-        logger.info(f"[{process_name}] Frame grabber process cleaning up and exiting...")
+        logger.info("Frame grabber process cleaning up and exiting")
         video_capture.release()
         # Optionally, signal downstream processes about shutdown by putting None to queue
         # This block is commented out as the shutdown signal is managed by shutdown_event.

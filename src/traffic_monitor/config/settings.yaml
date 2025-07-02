@@ -1,8 +1,25 @@
+# Traffic Monitor Configuration
+#
+# LOGGING CONFIGURATION:
+# - Use LOG_LEVEL environment variable to override log level: LOG_LEVEL=INFO python main.py
+# - Use LOG_FORMAT=json for structured logging: LOG_FORMAT=json python main.py
+# - Combine both: LOG_LEVEL=WARNING LOG_FORMAT=json python main.py
+# - Sensitive data (license plates, API keys, passwords) is automatically redacted
+# - Third-party library noise (matplotlib, urllib3, etc.) is automatically suppressed
+#
+# LOG LEVELS (from most to least verbose):
+# - TRACE: High-frequency operations (individual frame processing)
+# - DEBUG: Periodic summaries and configuration details
+# - INFO: Process lifecycle events and significant state changes
+# - WARNING: Recoverable issues and performance concerns
+# - ERROR: Failures requiring attention
+# - CRITICAL: System-threatening failures
+
 frame_grabber:
   video_source: "data/videos/input/IMG_3637.MOV"
   resize_resolution: [1280, 720]
   log_every_n_frames: 60 # Log every 30 frames
-  process_every_n_frame: 3 # Process every frame by default
+  process_every_n_frame: 3 # Increased from 3 to 5 for better real-time performance
 
 vehicle_detector:
   model_path: "data/models/best(8).pt"
@@ -24,21 +41,39 @@ vehicle_tracker:
   per_class: None
 
 loguru:
+  # Log level (can be overridden by LOG_LEVEL environment variable)
+  # Options: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL
   level: "DEBUG"
+
+  # Log format (can be overridden by LOG_FORMAT=json environment variable for structured logging)
   format: "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{process.name: <15}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+
+  # Enable JSON structured logging (set to true for production environments)
+  # Alternatively, use LOG_FORMAT=json environment variable
+  use_json: false
+
+  # File logging configuration
   file_path: "logs/traffic_monitor.log"
-  file_rotation: "10 MB"
-  file_retention: "7 days"
-  file_compression: "zip"
-  terminal_output_enabled: true
-  log_file_overwrite: true
+  file_rotation: "10 MB" # Rotate when file reaches this size
+  file_retention: "7 days" # Keep logs for this duration
+  file_compression: "zip" # Compress rotated logs
+  log_file_overwrite: true # Overwrite existing log file on startup
+
+  # Terminal output configuration
+  terminal_output_enabled: true # Set to false to disable console output
+
+  # Sensitive data protection (automatically redacts license plates, API keys, passwords)
+  # This is always enabled for security - no configuration needed
+
+  # Third-party library noise suppression (automatically enabled)
+  # Suppresses verbose logs from matplotlib, urllib3, requests, PIL
 
 lp_detector:
   model_path: "data/models/lp.pt"
   conf_threshold: 0.8
 
 ocr_reader:
-  backend: "fast_plate_ocr" # or "paddleocr"
+  backend: "paddleocr" # or "paddleocr"
   lang: "en" # Language code for PaddleOCR backend
   use_gpu: false # Whether to enable GPU for PaddleOCR backend
   hub_model_name: "global-plates-mobile-vit-v2-model"
@@ -108,3 +143,15 @@ visualizer:
 # motorcycle: [255, 255, 180] # Light Yellow
 # bicycle: [255, 180, 255]    # Light Magenta
 # person: [180, 255, 255]     # Light Cyan
+
+# Database Configuration
+database:
+  # Path to SQLite database file (relative to project root)
+  path: "data/db/traffic_monitor.db"
+
+  # SQLite optimization settings
+  pragmas:
+    journal_mode: "WAL" # Write-Ahead Logging for better concurrency
+    synchronous: "NORMAL" # Balance between safety and performance
+    cache_size: -64000 # 64MB cache (negative = KB)
+    temp_store: "MEMORY" # Store temporary tables in memory

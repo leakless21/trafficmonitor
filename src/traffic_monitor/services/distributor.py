@@ -27,11 +27,18 @@ def distributor_process(
                     q.put(None)
                 break
 
-            # For each output queue, put a copy of the message.
+            # For each output queue, drop old message if full and put new message (real-time behavior)
             for q in output_queues:
                 try:
-                    q.put(message, timeout=1.0)
+                    # Drop old message if queue is full, then put new message
+                    try:
+                        q.get_nowait()  # Remove old message if queue is full
+                    except Empty:
+                        pass  # Queue was empty, which is fine
+                    
+                    q.put_nowait(message)  # Put new message without blocking
                 except Full:
+                    # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
                     logger.warning(f"[{process_name}] An output queue is full. Message may be dropped for that branch.")
     
     except Exception:

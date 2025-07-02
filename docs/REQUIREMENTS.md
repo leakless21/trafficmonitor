@@ -32,14 +32,19 @@
 - The system shall load configuration parameters from a YAML file (`settings.yaml`).
 - The system shall allow configuration of video sources, model paths, confidence thresholds, and tracker parameters.
 
-### FR6: Logging
+### FR6: Logging ✅ **IMPLEMENTED**
 
-- The system shall implement structured logging for debugging, informational, and error messages.
-- The system shall support configurable log levels and formats.
-- The system shall provide detailed class-specific logging for vehicle detection, tracking, and counting.
-- The system shall log specific vehicle class names (e.g., "car", "bicycle", "truck") instead of generic "vehicle" terms.
-- The system shall include track IDs and class information in vehicle crossing detection logs.
-- The system shall provide class-specific count summaries in detection and tracking logs.
+- The system shall implement structured logging for debugging, informational, and error messages. ✅
+- The system shall support configurable log levels and formats with environment variable control. ✅
+- The system shall provide detailed class-specific logging for vehicle detection, tracking, and counting. ✅
+- The system shall log specific vehicle class names (e.g., "car", "bicycle", "truck") instead of generic "vehicle" terms. ✅
+- The system shall include track IDs and class information in vehicle crossing detection logs. ✅
+- The system shall provide class-specific count summaries in detection and tracking logs. ✅
+- The system shall automatically redact sensitive information (license plates, API keys, passwords) from logs. ✅
+- The system shall support JSON structured logging for production environments. ✅
+- The system shall suppress noise from third-party libraries (matplotlib, urllib3, etc.). ✅
+- The system shall provide process-aware logging for multiprocessing environments. ✅
+- The system shall implement appropriate log levels (TRACE for high-frequency, DEBUG for summaries, INFO for lifecycle events). ✅
 
 ### FR7: Vehicle Counting
 
@@ -73,6 +78,15 @@
 - The system shall support exporting data to various formats (e.g., CSV, JSON, XML).
 - The system shall allow for selective export of data based on vehicle class or time range.
 - The system shall provide detailed export logs for tracking and counting activities.
+
+### FR11: Data Persistence ✅ **IMPLEMENTED**
+
+- The system shall persist plate recognition results and vehicle count data in SQLite for later analytics. ✅
+- The system shall store timestamp, camera ID, vehicle ID, license plate text, and OCR confidence for each plate detection. ✅
+- The system shall store timestamp, camera ID, total count, and class-specific counts for vehicle counting events. ✅
+- The system shall use WAL mode for better concurrency and automatic retry on database locks. ✅
+- The system shall support configurable database path and SQLite optimization settings via settings.yaml. ✅
+- The system shall automatically create database directories and apply PRAGMA settings from configuration. ✅
 
 ## Non-Functional Requirements
 

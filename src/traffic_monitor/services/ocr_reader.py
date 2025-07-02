@@ -36,21 +36,31 @@ class OCRReader:
         elif self.backend == "paddleocr":
             if PaddleOCR is None:
                 raise ImportError("paddleocr package is not installed. Please install paddleocr to use this backend.")
-            # Map config keys for clarity
+            # Map config keys for PaddleOCR v5 API
             use_gpu: bool = bool(config.get("use_gpu", False))
+            device = "cuda" if use_gpu else "cpu"
+            # Allow explicit device override from config (map common values)
+            device_override = config.get("device")
+            if device_override:
+                if device_override.startswith("gpu"):
+                    device = "cuda"
+                elif device_override == "cpu":
+                    device = "cpu"
+                elif device_override == "auto":
+                    device = "auto"
             lang: str = str(config.get("lang", "en"))
             try:
-                # Initialize PaddleOCR with recommended v3 API
+                # Initialize PaddleOCR with v5 API (device parameter instead of use_gpu)
                 self.reader = PaddleOCR(
                     use_doc_orientation_classify=False,
                     use_doc_unwarping=False,
                     use_textline_orientation=False,
                     lang=lang,
-                    use_gpu=use_gpu,
-                    text_detection_model_name="PP-OCRv5_mobile_det",
-                    text_recognition_model_name="PP-OCRv5_mobile_rec",
+                    device=device,
+                    text_detection_model_name="PP-OCRv4_mobile_det",
+                    text_recognition_model_name="en_PP-OCRv4_mobile_rec",
                 )
-                logger.info(f"[OCRReader] PaddleOCR initialized with language: {lang} | GPU: {use_gpu}")
+                logger.info(f"[OCRReader] PaddleOCR initialized with language: {lang} | Device: {device}")
             except Exception as e:
                 logger.error(f"[OCRReader] Failed to initialize PaddleOCR reader: {e}")
                 raise
@@ -172,7 +182,21 @@ def ocr_reader_process(config: Dict[str, Any], lp_detector_output_queue: Queue, 
                     "lp_text": lp_text,
                     "ocr_confidence": ocr_confidence,
                 }
-                ocr_reader_output_queue.put(ocr_result_message, timeout=1)
+                
+                # Real-time behavior: drop old OCR result if queue is full
+                try:
+                    try:
+                        ocr_reader_output_queue.get_nowait()  # Remove old OCR result if queue is full
+                    except Empty:
+                        pass  # Queue was empty, which is fine
+                    
+                    ocr_reader_output_queue.put_nowait(ocr_result_message)  # Put new OCR result without blocking
+                except Full:
+                    # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
+                    logger.warning(f"[OCRReader] Output queue is full, dropping OCR result for vehicle {lp_message['vehicle_id']}")
+                except Exception as e:
+                    logger.exception(f"[OCRReader] Error putting OCR result on output queue: {e}")
+                
                 vehicle_class = lp_message.get('vehicle_class', 'unknown')
                 logger.info(f"[OCRReader] Detected plate '{lp_text}' for {vehicle_class} (ID: {lp_message['vehicle_id']}) with confidence {ocr_confidence:.3f}")
             else:

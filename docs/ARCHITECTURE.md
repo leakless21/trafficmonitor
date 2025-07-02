@@ -147,3 +147,36 @@ The system utilizes `multiprocessing.Queue` for inter-process communication betw
 
 - **Internal:** `multiprocessing`, `cv2`, `numpy`, `loguru`, `pathlib`, `src.traffic_monitor.utils.custom_types`.
 - **External:** `fast_plate_ocr` or `paddleocr` libraries, depending on the chosen engine.
+
+### Persistence Component (SQLite)
+
+**Purpose:** The `minidb` utility provides lightweight SQLite persistence for storing plate recognition results and vehicle count data without requiring external database servers.
+
+**Area of Responsibility:**
+
+- Creating and managing SQLite database schema with proper indexing.
+- Storing plate detection results with timestamp, camera ID, vehicle ID, license plate text, and confidence.
+- Storing vehicle count events with timestamp, camera ID, total count, and class-specific counts.
+- Handling database locks with automatic retry and exponential backoff.
+- Enabling WAL mode for better concurrency between processes.
+
+**Compute Requirements:**
+
+- Minimal CPU overhead for database operations.
+- I/O bound for database writes, optimized with WAL mode.
+
+**Storage Requirements:**
+
+- Single SQLite file (`traffic_monitor.db`) in project root.
+- Automatic directory creation if needed.
+- Indexed storage for efficient queries by camera and timestamp.
+
+**Interfaces:**
+
+- **Input:** Called directly by services via `write_plate_result()` and `write_vehicle_count()` functions.
+- **Output:** SQLite database file available for analytics, reporting, and external tools.
+
+**Dependencies:**
+
+- **Internal:** Built-in `sqlite3` module, `loguru` for logging, `pathlib` for file operations.
+- **External:** None - uses Python standard library only.

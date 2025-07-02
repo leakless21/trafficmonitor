@@ -147,10 +147,20 @@ def vehicle_counter_process(config: dict, input_queue: Queue, output_queue: Queu
                 total_count = count_update_message["total_count"]
                 class_counts = count_update_message["class_counts"]
                 logger.info(f"[VehicleCounter] Total count: {total_count}, Count by class: {class_counts}")
+                
+                # Real-time behavior: drop old count if queue is full
                 try:
-                    output_queue.put(count_update_message, timeout=1)
+                    try:
+                        output_queue.get_nowait()  # Remove old count if queue is full
+                    except Empty:
+                        pass  # Queue was empty, which is fine
+                    
+                    output_queue.put_nowait(count_update_message)  # Put new count without blocking
                 except Full:
-                    logger.warning("[VehicleCounter] Output queue is full, dropping message")
+                    # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
+                    logger.warning("[VehicleCounter] Output queue is full, dropping count message")
+                except Exception as e:
+                    logger.exception(f"[VehicleCounter] Error putting count message on output queue: {e}")
             else:
                 logger.debug("[VehicleCounter] No count update")
     except Exception as e:

@@ -8,6 +8,7 @@ from queue import Empty
 
 from traffic_monitor.utils.custom_types import OCRResultMessage
 from .utils.logging_config import setup_logging
+from .utils.minidb import configure_database, init_db
 from .services.distributor import distributor_process
 from .services.frame_grabber import frame_grabber_process
 from .utils.config_loader import load_config
@@ -34,147 +35,83 @@ def main():
     loguru_config = config.get("loguru", {})
     setup_logging(loguru_config)
 
-    logger.info(f"Loaded configuration: {config}")
+    # Configure and initialize database
+    configure_database(config)
+    init_db()
 
+    # Log condensed config info at debug level
+    logger.debug("Configuration loaded", 
+                video_source=config.get("frame_grabber", {}).get("video_source"),
+                tracker_type=config.get("vehicle_tracker", {}).get("tracker_type"),
+                log_level=loguru_config.get("level", "INFO"))
+
+    # Build service configurations
     fg_config = config.get("frame_grabber", {})
     fg_config["service_name"] = "FrameGrabber"
-    logger.debug(f"FrameGrabber config: {fg_config}")
+    fg_config["loguru"] = loguru_config
 
     vd_config = config.get("vehicle_detector", {})
     vd_config["service_name"] = "VehicleDetector"
-    logger.debug(f"VehicleDetector config: {vd_config}")
+    vd_config["loguru"] = loguru_config
 
     vt_config = config.get("vehicle_tracker", {})
     vt_config["service_name"] = "VehicleTracker"
     vt_config["class_mapping"] = config["vehicle_detector"]["class_mapping"]
-    logger.debug(f"VehicleTracker config: {vt_config}")
+    vt_config["loguru"] = loguru_config
 
     lp_config = config.get("lp_detector", {})
     lp_config["service_name"] = "LPDetector"
-    logger.debug(f"LPDetector config: {lp_config}")
+    lp_config["loguru"] = loguru_config
 
     ocr_config = config.get("ocr_reader", {})
     ocr_config["service_name"] = "OCRReader"
-    logger.debug(f"OCRReader config: {ocr_config}")
+    ocr_config["loguru"] = loguru_config
 
     vc_config = config.get("vehicle_counter", {})
     vc_config["service_name"] = "VehicleCounter"
-    vc_config["loguru"] = loguru_config  # Pass logging config to vehicle counter
-    logger.debug(f"VehicleCounter config: {vc_config}")
+    vc_config["loguru"] = loguru_config
 
     vis_config = config.get("visualizer", {})
     vis_config["service_name"] = "Visualizer"
-    logger.debug(f"Visualizer config: {vis_config}")
+    vis_config["loguru"] = loguru_config
 
-    if not config:
-        logger.error("Failed to load configuration. Exiting.")
-        return
+    # Real-time queue sizes - keep only the latest frame to eliminate slow-motion lag
+    frame_grabber_output_queue = mp.Queue(maxsize=1)        # Only latest frame
+    vehicle_detector_output_queue = mp.Queue(maxsize=1)     # Only latest detection  
+    vehicle_tracker_output_queue = mp.Queue(maxsize=1)      # Only latest tracking
+    lp_detector_output_queue = mp.Queue(maxsize=1)          # Only latest LP detection
+    ocr_reader_output_queue = mp.Queue(maxsize=1)           # Only latest OCR
+    vehicle_counter_output_queue = mp.Queue(maxsize=1)      # Only latest count
+    visualizer_input_queue = mp.Queue(maxsize=1)            # Only latest for display
 
-    # More conservative queue sizes to prevent backlog and process crashes
-    frame_grabber_output_queue = mp.Queue(maxsize=20)        # Smaller to apply backpressure early
-    vehicle_detector_output_queue = mp.Queue(maxsize=25)     # Reduced for stability  
-    vehicle_tracker_output_queue = mp.Queue(maxsize=40)      # Reduced main distribution buffer
-    lp_detector_output_queue = mp.Queue(maxsize=25)          # Reduced LP detection buffer
-    ocr_reader_output_queue = mp.Queue(maxsize=20)           # Keep OCR buffer smaller
-    vehicle_counter_output_queue = mp.Queue(maxsize=10)      # Counter updates are infrequent
-    visualizer_input_queue = mp.Queue(maxsize=30)            # Reduced visualization buffer
+    lp_detector_input_queue = mp.Queue(maxsize=1)           # Only latest for LP processing
+    vehicle_counter_input_queue = mp.Queue(maxsize=1)       # Only latest for counting
 
-    lp_detector_input_queue = mp.Queue(maxsize=25)           # Match LP detector capacity
-    vehicle_counter_input_queue = mp.Queue(maxsize=20)       # Match counter processing speed
+    # Create process configurations
+    process_configs = [
+        ("FrameGrabber", frame_grabber_process, (fg_config, frame_grabber_output_queue, shutdown_event)),
+        ("VehicleDetector", vehicle_detector_process, (vd_config, frame_grabber_output_queue, vehicle_detector_output_queue, shutdown_event)),
+        ("VehicleTracker", vehicle_tracker_process, (vt_config, vehicle_detector_output_queue, vehicle_tracker_output_queue, shutdown_event)),
+        ("LPDetector", lp_detector_process, (lp_config, lp_detector_input_queue, lp_detector_output_queue, shutdown_event)),
+        ("OCRReader", ocr_reader_process, (ocr_config, lp_detector_output_queue, ocr_reader_output_queue, shutdown_event)),
+        ("VehicleCounter", vehicle_counter_process, (vc_config, vehicle_counter_input_queue, vehicle_counter_output_queue, shutdown_event)),
+        ("Distributor", distributor_process, (vehicle_tracker_output_queue, [lp_detector_input_queue, vehicle_counter_input_queue, visualizer_input_queue], shutdown_event)),
+        ("Visualizer", visualize_process, (vis_config, visualizer_input_queue, ocr_reader_output_queue, vehicle_counter_output_queue, shutdown_event)),
+    ]
 
-    dist_process = mp.Process(
-        target=distributor_process,
-        name="Distributor",
-        args=(
-            vehicle_tracker_output_queue,
-            [lp_detector_input_queue, vehicle_counter_input_queue, visualizer_input_queue],
-            shutdown_event
-        )
-    )
-
-    # FrameGrabber process
-    fg_process = mp.Process(
-        target=frame_grabber_process,
-        name="FrameGrabber",
-        args=(
-            fg_config,
-            frame_grabber_output_queue,
-            shutdown_event
-        )
-    )
-    # VehicleDetector process
-    vd_process = mp.Process(
-        target=vehicle_detector_process,
-        name="VehicleDetector",
-        args=(
-            vd_config,
-            frame_grabber_output_queue,
-            vehicle_detector_output_queue,
-            shutdown_event
-        )
-    )
-    # VehicleTracker process
-    vt_process = mp.Process(
-        target=vehicle_tracker_process,
-        name="VehicleTracker",
-        args=(vt_config, vehicle_detector_output_queue, vehicle_tracker_output_queue, shutdown_event)
-    )
-    # LPDetector process
-    lp_process = mp.Process(
-        target=lp_detector_process,
-        name="LPDetector",
-        args=(lp_config, lp_detector_input_queue, lp_detector_output_queue, shutdown_event)
-    )
-    # OCRReader process
-    ocr_process = mp.Process(
-        target=ocr_reader_process,
-        name="OCRReader",
-        args=(ocr_config, lp_detector_output_queue, ocr_reader_output_queue, shutdown_event)
-    )
-    # VehicleCounter process
-    vc_process = mp.Process(
-        target=vehicle_counter_process,
-        name="VehicleCounter",
-        args=(vc_config, vehicle_counter_input_queue, vehicle_counter_output_queue, shutdown_event)
-    )
-    # Visualizer process
-    vis_process = mp.Process(
-        target=visualize_process,
-        name="Visualizer",
-        args=(vis_config, visualizer_input_queue, ocr_reader_output_queue, vehicle_counter_output_queue, shutdown_event)
-    )
-    # Start the processes
-    fg_process.start()
-    logger.info(f"MainProcess] FrameGrabber process started with PID {fg_process.pid}.")
-
-    vd_process.start()
-    logger.info(f"MainProcess] VehicleDetector process started with PID {vd_process.pid}.")
-
-    vt_process.start()
-    logger.info(f"MainProcess] VehicleTracker process started with PID {vt_process.pid}.")
-
-    lp_process.start()
-    logger.info(f"MainProcess] LPDetector process started with PID {lp_process.pid}.")
-
-    ocr_process.start()
-    logger.info(f"MainProcess] OCRReader process started with PID {ocr_process.pid}.")
-
-    vc_process.start()
-    logger.info(f"MainProcess] VehicleCounter process started with PID {vc_process.pid}.")
-
-    dist_process.start()
-    logger.info(f"MainProcess] Distributor process started with PID {dist_process.pid}.")
-
-    vis_process.start()
-    logger.info(f"MainProcess] Visualizer process started with PID {vis_process.pid}.")
-
-    processes = [fg_process, vd_process, vt_process, lp_process, ocr_process, vc_process, dist_process, vis_process]
+    # Start all processes
+    processes = []
+    for name, target, args in process_configs:
+        process = mp.Process(target=target, name=name, args=args)
+        process.start()
+        processes.append(process)
+        logger.info(f"Started {name} process with PID {process.pid}")
 
     try:
-        logger.info("Starting main loop...Press 'q' to quit.")
+        logger.info("All processes started. Press Ctrl+C to quit.")
         while not shutdown_event.is_set():
             if not all(process.is_alive() for process in processes):
-                logger.error("MainProcess] One or more processes are dead. Shutting down.")
+                logger.error("One or more processes died. Shutting down.")
                 shutdown_event.set()
                 break
             time.sleep(0.5)
@@ -188,41 +125,32 @@ def main():
     finally:
         logger.info("Starting cleanup...")
         for process in processes:
-            logger.info(f"Waiting for process {process.name} to finish...")
             if process.is_alive():
                 process.join(timeout=5)
             if process.is_alive():
-                logger.warning(f"Process {process.name} did not finish in time. Sending SIGKILL.")
+                logger.warning(f"Process {process.name} did not finish in time. Terminating.")
                 process.terminate()
                 process.join(timeout=2)
             else:
-                logger.info(f"Process {process.name} finished.")
+                logger.debug(f"Process {process.name} finished cleanly")
+        
         logger.info("Closing queues...")
-        try:
-            frame_grabber_output_queue.close()
-            frame_grabber_output_queue.join_thread() # Wait for all items to be flushed
-            vehicle_detector_output_queue.close()
-            vehicle_detector_output_queue.join_thread() # Wait for all items to be flushed
-            vehicle_tracker_output_queue.close()
-            vehicle_tracker_output_queue.join_thread() # Wait for all items to be flushed
-            lp_detector_output_queue.close()
-            lp_detector_output_queue.join_thread() # Wait for all items to be flushed
-            ocr_reader_output_queue.close()
-            ocr_reader_output_queue.join_thread() # Wait for all items to be flushed
-            vehicle_counter_output_queue.close()
-            vehicle_counter_output_queue.join_thread() # Wait for all items to be flushed
-            lp_detector_input_queue.close()
-            lp_detector_input_queue.join_thread() # Wait for all items to be flushed
-            vehicle_counter_input_queue.close()
-            vehicle_counter_input_queue.join_thread() # Wait for all items to be flushed
-            visualizer_input_queue.close()
-            visualizer_input_queue.join_thread() # Wait for all items to be flushed
-            logger.info("Queues closed.")
-        except Exception as queue_error:
-            logger.error(f"Error closing queues: {queue_error}")
+        queues = [
+            frame_grabber_output_queue, vehicle_detector_output_queue, vehicle_tracker_output_queue,
+            lp_detector_output_queue, ocr_reader_output_queue, vehicle_counter_output_queue,
+            visualizer_input_queue, lp_detector_input_queue, vehicle_counter_input_queue
+        ]
+        
+        for queue in queues:
+            try:
+                queue.close()
+                queue.join_thread()
+            except Exception as e:
+                logger.debug(f"Error closing queue: {e}")
+        
         logger.info("Supervisor cleanup complete.")
-    logger.info("Supervisor finished.")
+        logger.info("Supervisor finished.")
+
 
 if __name__ == "__main__":
-    mp.set_start_method("spawn", force=True)
     main()

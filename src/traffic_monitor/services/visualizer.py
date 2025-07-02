@@ -124,12 +124,12 @@ class Visualizer:
         cv2.putText(image, label, (x1, y1 - baseline), self.font, self.font_scale, (0, 0, 0), self.font_thickness)
         
     def _draw_stats(self, image: np.ndarray):
-        # Calculate FPS
-        if len(self.fps_calculator) > 1:
+        # Calculate FPS - require at least 10 frames to avoid early inflation
+        if len(self.fps_calculator) >= 10:
             fps = len(self.fps_calculator) / (self.fps_calculator[-1] - self.fps_calculator[0])
             fps_text = f"FPS: {fps:.1f}"
         else:
-            fps_text = "FPS: N/A"
+            fps_text = f"FPS: Initializing... ({len(self.fps_calculator)}/10)"
         
         cv2.putText(image, fps_text, (10, 30), self.font, self.font_scale, (255, 255, 255), self.font_thickness)
 
@@ -171,6 +171,13 @@ class Visualizer:
         jpeg_bytes = frame_msg["frame_data_jpeg"]
         frame = cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8), cv2.IMREAD_COLOR)
         current_time = time.time()
+        
+        # Check frame age for real-time behavior - drop frames older than 1 second
+        frame_age = current_time - frame_msg["timestamp"]
+        if frame_age > 1.0:  # Drop frames older than 1 second
+            logger.trace(f"Dropping old frame {frame_msg['frame_id']} (age: {frame_age:.2f}s)")
+            return frame  # Return frame anyway but log the drop
+        
         self.fps_calculator.append(current_time)
 
         # Initialize video timing on first frame
@@ -192,134 +199,127 @@ class Visualizer:
             self.video_writer.write(frame)
             self.frame_count += 1
             
-            # Log frame writing progress periodically
-            if self.frame_count % 100 == 0:
+            # Log frame writing progress less frequently
+            if self.frame_count % 500 == 0:  # Every 500 frames instead of 100
                 elapsed_time = current_time - self.video_start_time
                 expected_frames = elapsed_time * frame_msg["og_fps"]
                 frame_ratio = self.frame_count / expected_frames if expected_frames > 0 else 1.0
-                logger.debug(f"[Visualizer] Written {self.frame_count} frames. Frame ratio: {frame_ratio:.2f} (1.0 = real-time)")
+                logger.debug(f"Written {self.frame_count} frames. Frame ratio: {frame_ratio:.2f}")
 
         return frame
     
     def release(self):
         if self.video_writer:
-            logger.debug(f"[Visualizer] Releasing video writer...")
+            logger.debug("Releasing video writer")
             self.video_writer.release()
             self.video_writer = None
-            logger.debug(f"[Visualizer] Video writer released.")
 
 def visualize_process(config: dict, tracking_queue: Queue, OCR_queue: Queue, vehicle_count_queue: Queue, shutdown_event: Event):
     # Setup logging for this process
     try:
-        setup_logging()
-        logger.info(f"[Visualizer] Logger initialized for visualizer process.")
+        setup_logging(config.get("loguru"))
+        logger.info("Visualizer process started")
     except Exception as e:
-        print(f"[Visualizer] Failed to setup logging: {e}")
+        print(f"Failed to setup logging: {e}")
     
     process_name = mp.current_process().name
-    logger.info(f"[Visualizer] Visualizer process {process_name} started.")
     
     try:
         # Test OpenCV GUI capabilities
-        logger.info(f"[Visualizer] Testing OpenCV GUI capabilities...")
+        logger.debug("Testing OpenCV GUI capabilities")
         
         # Check if we can create a window
         test_img = np.zeros((100, 100, 3), dtype=np.uint8)
-        logger.info(f"[Visualizer] Created test image.")
         
         try:
             cv2.imshow("Traffic Monitor", test_img)
-            logger.info(f"[Visualizer] Successfully created OpenCV window.")
             cv2.waitKey(1)  # Process window events
+            logger.info("OpenCV window created successfully")
         except Exception as window_error:
-            logger.error(f"[Visualizer] Failed to create OpenCV window: {window_error}")
-            logger.error(f"[Visualizer] This might indicate a display/GUI environment issue.")
+            logger.error(f"Failed to create OpenCV window: {window_error}")
+            logger.error("This might indicate a display/GUI environment issue")
             return
         
-        logger.info(f"[Visualizer] Initializing visualizer...")
         visualizer = Visualizer(config)
-        logger.info(f"[Visualizer] Visualizer initialized successfully.")
+        logger.info("Visualizer initialized successfully")
 
         frame_count = 0
         while not shutdown_event.is_set():
             try:
-                tracking_msg: TrackedVehicleMessage = tracking_queue.get(timeout=1)
-                logger.debug(f"[Visualizer] Received tracking message for frame: {tracking_msg.get('frame_id', 'unknown')}")
+                # Use non-blocking get to maintain real-time behavior
+                tracking_msg: TrackedVehicleMessage = tracking_queue.get_nowait()
+                logger.trace(f"Received tracking message for frame: {tracking_msg.get('frame_id', 'unknown')}")
             except Empty:
-                logger.debug(f"[Visualizer] No tracking message received, continuing...")
+                # No tracking message available, continue processing other queues and check again
+                logger.trace("No tracking message received, continuing")
+                
+                # Process any remaining OCR and count messages for this frame
+                try:
+                    # Process any available OCR messages
+                    while True:
+                        try:
+                            ocr_msg: OCRResultMessage = OCR_queue.get_nowait()
+                            if ocr_msg:
+                                track_id_from_ocr = ocr_msg["vehicle_id"]
+                                visualizer.latest_ocr_results[track_id_from_ocr] = {
+                                    "text": ocr_msg["lp_text"],
+                                    "timestamp": time.time()
+                                }
+                        except Empty:
+                            break
+                    
+                    # Process any available vehicle count messages
+                    while True:
+                        try:
+                            count_msg: VehicleCountMessage = vehicle_count_queue.get_nowait()
+                            if count_msg:
+                                visualizer.latest_vehicle_count = count_msg
+                        except Empty:
+                            break
+                except Exception as e:
+                    logger.error(f"Error processing OCR/count messages: {e}")
+                
                 if shutdown_event.is_set():
                     break
+                time.sleep(0.001)  # Very short sleep to prevent busy waiting
                 continue
             
             try:
-                # Process OCR messages
-                ocr_messages_processed = 0
-                while not OCR_queue.empty():
-                    try:
-                        ocr_msg: OCRResultMessage = OCR_queue.get_nowait()
-                        if ocr_msg:
-                            track_id_from_ocr = ocr_msg["vehicle_id"]
-                            visualizer.latest_ocr_results[track_id_from_ocr] = {
-                                "text": ocr_msg["lp_text"],
-                                "timestamp": time.time()
-                            }
-                            ocr_messages_processed += 1
-                    except Empty:
-                        break
-                
-                if ocr_messages_processed > 0:
-                    logger.debug(f"[Visualizer] Processed {ocr_messages_processed} OCR messages.")
-                
-                # Process vehicle count messages
-                count_messages_processed = 0
-                while not vehicle_count_queue.empty():
-                    try:
-                        count_msg: VehicleCountMessage = vehicle_count_queue.get_nowait()
-                        if count_msg:
-                            visualizer.latest_vehicle_count = count_msg
-                            count_messages_processed += 1
-                    except Empty:
-                        break
-                
-                if count_messages_processed > 0:
-                    logger.debug(f"[Visualizer] Processed {count_messages_processed} count messages.")
-
                 # Process and display the frame
-                logger.debug(f"[Visualizer] Processing frame for display...")
+                logger.trace("Processing frame for display")
                 display_frame = visualizer.process_frame(tracking_msg)
                 
-                logger.debug(f"[Visualizer] Displaying frame...")
                 cv2.imshow("Traffic Monitor", display_frame)
                 
                 frame_count += 1
-                if frame_count % 30 == 0:  # Log every 30 frames
-                    logger.info(f"[Visualizer] Displayed {frame_count} frames so far.")
+                if frame_count % 100 == 0:  # Log every 100 frames instead of 30
+                    logger.info(f"Displayed {frame_count} frames so far")
 
                 # Check for quit signal
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord('q'):
-                    logger.info(f"[Visualizer] Visualizer process {process_name} received quit signal (q key).")
+                    logger.info("Quit signal received (q key)")
                     shutdown_event.set()
                     break
                 elif key != 255:  # Any other key pressed
-                    logger.debug(f"[Visualizer] Key pressed: {key}")
+                    logger.trace(f"Key pressed: {key}")
                     
             except Exception as frame_error:
-                logger.error(f"[Visualizer] Error processing frame: {frame_error}")
+                logger.error(f"Error processing frame: {frame_error}")
                 continue
     
     except Exception as e:
-        logger.error(f"[Visualizer] Visualizer process {process_name} encountered a critical error: {e}")
-        logger.exception(f"[Visualizer] Full exception traceback:")
+        logger.error(f"Visualizer process encountered critical error: {e}")
+        logger.exception("Full exception traceback")
     
     finally:
-        logger.info(f"[Visualizer] Cleaning up visualizer process...")
+        logger.info("Cleaning up visualizer process")
         try:
             visualizer.release()
             cv2.destroyAllWindows()
-            logger.info(f"[Visualizer] OpenCV windows destroyed.")
+            logger.debug("OpenCV windows destroyed")
         except Exception as cleanup_error:
-            logger.error(f"[Visualizer] Error during cleanup: {cleanup_error}")
+            logger.error(f"Error during cleanup: {cleanup_error}")
         
-        logger.info(f"[Visualizer] Visualizer process {process_name} shutting down.")
+        logger.info(f"Visualizer process {process_name} shutting down")
 

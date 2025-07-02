@@ -13,6 +13,7 @@
 lp_data/
 data/test_images/
 data/videos/
+data/models/
 output/
 logs/
 eval_all/
@@ -22,3 +23,29 @@ paddleocr_processing.log
 VLPR/
 create_test_image.py
 examples/
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Model weights and large binaries
+*.pt
+*.onnx
+*.weights
+*.bin
+
+# Log files
+*.log
+traffic_monitor_log.txt
+src/logs/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

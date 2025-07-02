@@ -1,7 +1,7 @@
 import multiprocessing as mp
 from multiprocessing.synchronize import Event
 from multiprocessing.queues import Queue
-from queue import Empty
+from queue import Empty, Full
 import cv2
 import numpy as np
 from loguru import logger
@@ -36,12 +36,10 @@ class VehicleTracker:
                 half=half,
                 per_class=per_class
             )
-            logger.info(f"[VehicleTracker] Tracker created successfully with type: {tracker_type}")
+            logger.info(f"VehicleTracker initialized: {tracker_type} on {device}")
         except Exception as e:
-            logger.exception(f"[VehicleTracker] Failed to create tracker with type {tracker_type}: {e}")
+            logger.exception(f"Failed to create tracker {tracker_type}: {e}")
             raise # Re-raise the exception to propagate the error
-
-        logger.info(f"VehicleTracker class initialized with type: {tracker_type}")
 
     def _detections_to_numpy(self, detections: List[Detection]) -> np.ndarray:
         """
@@ -105,7 +103,6 @@ class VehicleTracker:
         return self._tracks_to_dict(track_numpy, class_mapping)
     
 def vehicle_tracker_process(config: Dict[str, Any], input_queue: Queue, output_queue: Queue, shutdown_event: Event):
-    print(f"[VehicleTrackerProcess] Process starting...") # Very early print for debugging
     """
     The main process function for the vehicle tracker.
 
@@ -121,7 +118,7 @@ def vehicle_tracker_process(config: Dict[str, Any], input_queue: Queue, output_q
     """
     setup_logging(config.get("loguru")) # Initialize logging for this process
     process_name = mp.current_process().name
-    logger.info(f"[{process_name}] Vehicle Tracker process started.")
+    logger.info(f"Vehicle Tracker process {process_name} started")
 
     try:
         # Convert class mapping keys to integers
@@ -144,25 +141,24 @@ def vehicle_tracker_process(config: Dict[str, Any], input_queue: Queue, output_q
                 per_class=per_class,
                 tracker_config_path=tracker_config_path
             )
-            logger.info(f"[{process_name}] Vehicle tracker initialized.")
+            logger.info(f"Vehicle tracker initialized with {tracker_type}")
         except Exception as e:
-            logger.exception(f"[{process_name}] Failed to initialize VehicleTracker: {e}")
+            logger.exception(f"Failed to initialize VehicleTracker: {e}")
             return # Exit if initialization fails
 
         while not shutdown_event.is_set():
-            logger.debug(f"[{process_name}] Attempting to get vehicle detection message from input queue...")
             try:
                 # Get vehicle detection message from the input queue with a timeout
                 vehicle_detection_message: VehicleDetectionMessage = input_queue.get(timeout=1)
-                logger.debug(f"[{process_name}] Received vehicle detection message for frame {vehicle_detection_message.get('frame_id')}.")
+                logger.trace(f"Received detection message for frame {vehicle_detection_message.get('frame_id')}")
             except Empty:
                 # Continue if the queue is empty after the timeout
-                logger.trace(f"[{process_name}] Input queue is empty. Waiting for detection messages.")
+                logger.trace("Input queue empty, waiting for detection messages")
                 continue
             
             # Handle shutdown signal received as None message
             if vehicle_detection_message is None:
-                logger.warning(f"[{process_name}] Received None vehicle detection message. Shutting down.")
+                logger.info("Received shutdown signal. Terminating.")
                 output_queue.put(None) # Signal downstream processes to shut down as well
                 break
 
@@ -170,49 +166,55 @@ def vehicle_tracker_process(config: Dict[str, Any], input_queue: Queue, output_q
             jpeg_binary = vehicle_detection_message["frame_data_jpeg"]
             img_array = np.frombuffer(jpeg_binary, dtype=np.uint8)
             frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-            logger.debug(f"[{process_name}] Decoded frame {vehicle_detection_message.get('frame_id')}. Performing tracking...")
             
             # Perform tracking on the detected objects
             detections = vehicle_detection_message["detections"]
             tracked_objects = tracker.update(detections, class_mapping, frame)
             
-            # Enhanced logging with class-specific tracking information
-            if tracked_objects:
+            # Log tracking results with sampling to reduce noise
+            frame_id = vehicle_detection_message['frame_id']
+            if tracked_objects and hash(frame_id) % 30 == 0:  # Sample logging every ~30 frames
                 class_tracks = {}
-                track_ids_by_class = {}
                 for obj in tracked_objects:
                     class_name = obj["class_name"]
                     class_tracks[class_name] = class_tracks.get(class_name, 0) + 1
-                    if class_name not in track_ids_by_class:
-                        track_ids_by_class[class_name] = []
-                    track_ids_by_class[class_name].append(obj["track_id"])
                 
-                class_summary = ", ".join([f"{count} {class_name}{'s' if count > 1 else ''} (IDs: {track_ids_by_class[class_name]})" 
+                class_summary = ", ".join([f"{count} {class_name}{'s' if count > 1 else ''}" 
                                          for class_name, count in class_tracks.items()])
-                logger.debug(f"[{process_name}] Tracking {len(tracked_objects)} objects in frame {vehicle_detection_message['frame_id']}: {class_summary}")
-            else:
-                logger.debug(f"[{process_name}] No objects being tracked in frame {vehicle_detection_message['frame_id']}")
+                logger.debug(f"Tracking {len(tracked_objects)} objects in frame {frame_id}: {class_summary}")
 
-            # Put the tracked vehicle message into the output queue
-            output_message = TrackedVehicleMessage(
-                frame_id=vehicle_detection_message["frame_id"],
-                camera_id=vehicle_detection_message["camera_id"],
-                timestamp=vehicle_detection_message["timestamp"],
-                frame_data_jpeg=jpeg_binary,
-                frame_height=vehicle_detection_message["frame_height"],
-                frame_width=vehicle_detection_message["frame_width"],
-                og_frame_height=vehicle_detection_message["og_frame_height"],
-                og_frame_width=vehicle_detection_message["og_frame_width"],
-                og_fps=vehicle_detection_message["og_fps"],
-                tracked_objects=tracked_objects
-            )
-            output_queue.put(output_message)
-            logger.debug(f"[{process_name}] Put tracked vehicle message for frame {vehicle_detection_message['frame_id']} to output queue.")
+            # Put the tracked vehicle message into the output queue (real-time behavior)
+            try:
+                # Drop old frame if queue is full, then put new tracking result
+                try:
+                    output_queue.get_nowait()  # Remove old tracking if queue is full
+                except Empty:
+                    pass  # Queue was empty, which is fine
+                
+                output_message = TrackedVehicleMessage(
+                    frame_id=vehicle_detection_message["frame_id"],
+                    camera_id=vehicle_detection_message["camera_id"],
+                    timestamp=vehicle_detection_message["timestamp"],
+                    frame_data_jpeg=jpeg_binary,
+                    frame_height=vehicle_detection_message["frame_height"],
+                    frame_width=vehicle_detection_message["frame_width"],
+                    og_frame_height=vehicle_detection_message["og_frame_height"],
+                    og_frame_width=vehicle_detection_message["og_frame_width"],
+                    og_fps=vehicle_detection_message["og_fps"],
+                    tracked_objects=tracked_objects
+                )
+                output_queue.put_nowait(output_message)  # Put new tracking without blocking
+                logger.trace(f"Queued tracking results for frame {frame_id}")
+            except Full:
+                # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
+                logger.warning(f"Output queue full. Dropping tracking for frame {frame_id}")
+                continue
+            
     except Exception as e:
         # Log any exceptions that occur during the process and propagate the shutdown signal
-        logger.error(f"[{process_name}] Error in Vehicle Tracker process: {e}")
+        logger.error(f"Error in Vehicle Tracker process: {e}")
         output_queue.put(None)
         raise
     finally:
-        logger.info(f"[{process_name}] Vehicle Tracker process finished.")
+        logger.info(f"Vehicle Tracker process {process_name} finished")
 

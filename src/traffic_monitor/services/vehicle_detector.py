@@ -180,11 +180,17 @@ def vehicle_detector_process(
                     "detections": detections
                 }
                 
-                # Attempt to put the processed message into the output queue
+                # Attempt to put the processed message into the output queue (real-time behavior)
                 try:
-                    output_queue.put(output_message, timeout=1)
+                    # Drop old frame if queue is full, then put new result
+                    try:
+                        output_queue.get_nowait()  # Remove old detection if queue is full
+                    except Empty:
+                        pass  # Queue was empty, which is fine
+                    
+                    output_queue.put_nowait(output_message)  # Put new detection without blocking
                 except Full:
-                    # Log a warning if the output queue is full and drop the message
+                    # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
                     logger.warning(f"[{process_name}] Output queue is full. Dropping frame {frame_message['frame_id']}.")
                     continue
                 

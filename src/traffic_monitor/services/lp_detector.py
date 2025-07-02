@@ -61,8 +61,8 @@ def lp_detector_process(
 
     lp_detector: LPDetector | None = None
     try:
-        model_path = config.get("lp_detector", {}).get("model_path", "data/models/plate_v8n.pt")
-        conf_threshold = config.get("lp_detector", {}).get("conf_threshold", 0.6)
+        model_path = config.get("model_path", "data/models/lp.pt")
+        conf_threshold = config.get("conf_threshold", 0.8)
 
         if not model_path or not conf_threshold:
             logger.error("[LPDetectorProcess] Missing required configuration parameters for LPDetector.")
@@ -144,8 +144,15 @@ def lp_detector_process(
 
                     logger.debug(f"[LPDetectorProcess] Found plate for vehicle {vehicle['track_id']} with confidence {lp_confidence:.2f}")
                     try:
-                        output_queue.put(plate_message)
+                        # Drop old message if queue is full, then put new plate detection (real-time behavior)
+                        try:
+                            output_queue.get_nowait()  # Remove old plate detection if queue is full
+                        except Empty:
+                            pass  # Queue was empty, which is fine
+                        
+                        output_queue.put_nowait(plate_message)  # Put new plate detection without blocking
                     except Full:
+                        # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
                         logger.warning(f"[LPDetectorProcess] Output queue is full, dropping plate message for vehicle {vehicle['track_id']}")
                     except Exception as e:
                         logger.exception(f"[LPDetectorProcess] Error putting plate message on output queue: {e}")

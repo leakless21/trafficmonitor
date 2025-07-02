@@ -1,3 +1,70 @@
+## Data Persistence
+
+### SQLite Database Integration ✅ **IMPLEMENTED**
+
+**Issue**: The system lacked persistent storage for license plate detections and vehicle count data, making historical analysis and reporting impossible.
+
+**Affected Files**:
+
+- `src/traffic_monitor/utils/minidb.py` ✅ **IMPLEMENTED**
+- `src/traffic_monitor/main_supervisor.py` ✅ **IMPLEMENTED**
+- `test/test_minidb.py` ✅ **IMPLEMENTED**
+- `docs/COMPONENT_PERSISTENCE_DOCS.md` ✅ **IMPLEMENTED**
+
+**Status**: ✅ **RESOLVED** - Added lightweight SQLite persistence layer with zero external dependencies.
+
+**Implementation Details**:
+
+```python
+# Database schema for plate results
+CREATE TABLE plate_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts INTEGER DEFAULT (strftime('%s','now')*1000),
+    camera_id TEXT,
+    vehicle_id INTEGER,
+    lp_text TEXT,
+    ocr_conf REAL
+);
+
+# Database schema for vehicle counts
+CREATE TABLE vehicle_counts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts INTEGER DEFAULT (strftime('%s','now')*1000),
+    camera_id TEXT,
+    total_count INTEGER,
+    class_counts TEXT  -- JSON format
+);
+```
+
+**Features Implemented**:
+
+- WAL mode for better concurrency
+- Automatic retry with exponential backoff on database locks
+- Proper indexing for camera_id and timestamp queries
+- Comprehensive unit tests with in-memory database
+- Integration with main supervisor for automatic initialization
+
+**Usage**:
+
+```python
+from traffic_monitor.utils.minidb import write_plate_result, write_vehicle_count
+
+# Store plate detection
+write_plate_result(
+    camera_id="cam-01",
+    vehicle_id=123,
+    lp_text="ABC123",
+    ocr_conf=0.95
+)
+
+# Store vehicle count
+write_vehicle_count(
+    camera_id="cam-01",
+    total_count=42,
+    class_counts={"car": 30, "truck": 12}
+)
+```
+
 ## Deprecation Warnings
 
 ### NumPy Array Scalar Conversion
@@ -594,3 +661,98 @@ frame_grabber:
 - Lowers CPU/GPU load for detection and tracking
 - Enables real-time performance on modest hardware
 - Configurable based on system capabilities and requirements
+
+## Logging System Improvements
+
+### Redundant and Verbose Logging Cleanup
+
+**Issue**: The codebase had excessive, redundant, and inconsistent logging that created noise and reduced log quality. Multiple identical messages, debug spam in tight loops, and inconsistent formatting made troubleshooting difficult.
+
+**Affected Files**:
+
+- `src/traffic_monitor/utils/logging_config.py` ✅ **FIXED**
+- `src/traffic_monitor/main_supervisor.py` ✅ **FIXED**
+- `src/traffic_monitor/services/vehicle_tracker.py` ✅ **FIXED**
+- `src/traffic_monitor/services/frame_grabber.py` ✅ **FIXED**
+- `src/traffic_monitor/services/visualizer.py` ✅ **FIXED**
+
+**Status**: ✅ **RESOLVED** - Implemented production-ready logging with structured output, sensitive data filtering, and appropriate log levels.
+
+**Issues Found and Fixed**:
+
+1. **Redundant Messages**: Multiple processes logging virtually identical startup messages
+2. **Debug Spam**: Verbose debug logs in tight processing loops creating thousands of repetitive entries
+3. **Inconsistent Formatting**: Mix of bracketed prefixes `[ProcessName]` and unformatted messages
+4. **No Sensitive Data Protection**: License plates and other sensitive data logged in plain text
+5. **No Environment Configuration**: Hard-coded log levels without runtime control
+6. **Third-party Noise**: Unfiltered logs from matplotlib, urllib3, etc.
+
+**Improvements Implemented**:
+
+```python
+# Enhanced logging configuration with:
+# - Environment-based log levels (LOG_LEVEL env var)
+# - JSON output option (LOG_FORMAT=json)
+# - Sensitive data filtering (license plates, API keys, etc.)
+# - Third-party library noise reduction
+# - Process-aware formatting
+class SensitiveDataFilter:
+    def __init__(self):
+        self.patterns = [
+            (re.compile(r'\b[A-Z0-9]{2,4}-\d{3,4}\b'), '[PLATE_REDACTED]'),
+            (re.compile(r'api[_-]?key["\s]*[:=]["\s]*[^"\s,}]+', re.IGNORECASE), 'api_key="[REDACTED]"'),
+            # ... more patterns
+        ]
+```
+
+**Configuration Parameters Added to `settings.yaml`**:
+
+```yaml
+loguru:
+  # Log level (can be overridden by LOG_LEVEL environment variable)
+  level: "DEBUG"
+
+  # Enable JSON structured logging (can be overridden by LOG_FORMAT=json)
+  use_json: false
+
+  # File logging configuration
+  file_path: "logs/traffic_monitor.log"
+  file_rotation: "10 MB"
+  file_retention: "7 days"
+  file_compression: "zip"
+  log_file_overwrite: true
+
+  # Terminal output configuration
+  terminal_output_enabled: true
+```
+
+**Environment Variable Usage**:
+
+```bash
+# Set log level
+LOG_LEVEL=INFO python main.py
+
+# Enable JSON logging
+LOG_FORMAT=json python main.py
+
+# Production example
+LOG_LEVEL=WARNING LOG_FORMAT=json python main.py
+```
+
+**Specific Logging Fixes**:
+
+1. **Main Supervisor**: Removed redundant config dumps, consolidated process startup messages
+2. **Vehicle Tracker**: Eliminated print statement, reduced debug spam to trace level, added sampling for tracking logs
+3. **Frame Grabber**: Consolidated initialization messages, reduced frame processing verbosity
+4. **Visualizer**: Moved frequent operations to trace level, reduced frame display logging frequency
+5. **Sensitive Data**: Added automatic redaction of license plates and API keys from all logs
+
+**Log Level Strategy**:
+
+- `TRACE`: High-frequency operations (individual frame processing)
+- `DEBUG`: Periodic summaries and configuration details
+- `INFO`: Process lifecycle events and significant state changes
+- `WARNING`: Recoverable issues and performance concerns
+- `ERROR`: Failures requiring attention
+
+### Missing Logging Setup in Child Processes
