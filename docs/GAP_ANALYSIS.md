@@ -22,6 +22,7 @@ CREATE TABLE plate_results (
     ts INTEGER DEFAULT (strftime('%s','now')*1000),
     camera_id TEXT,
     vehicle_id INTEGER,
+    vehicle_class TEXT,
     lp_text TEXT,
     ocr_conf REAL
 );
@@ -34,6 +35,18 @@ CREATE TABLE vehicle_counts (
     total_count INTEGER,
     class_counts TEXT  -- JSON format
 );
+
+# Latest table (best results only) - NEW
+CREATE TABLE plate_results_latest (
+    camera_id TEXT,
+    vehicle_id INTEGER,
+    vehicle_class TEXT,
+    lp_text TEXT,
+    ocr_conf REAL,
+    first_seen INTEGER DEFAULT (strftime('%s','now')*1000),
+    last_updated INTEGER DEFAULT (strftime('%s','now')*1000),
+    PRIMARY KEY (camera_id, vehicle_id)  -- Ensures uniqueness
+);
 ```
 
 **Features Implemented**:
@@ -43,26 +56,85 @@ CREATE TABLE vehicle_counts (
 - Proper indexing for camera_id and timestamp queries
 - Comprehensive unit tests with in-memory database
 - Integration with main supervisor for automatic initialization
+- **Database reset on startup option** ✅ **NEW**
+- **Vehicle class column in plate_results table** ✅ **NEW**
+- **Dual-table approach with confidence-based updates** ✅ **NEW**
+
+**Dual-Table Architecture**:
+
+The system now implements a sophisticated dual-table approach to eliminate duplicate plates per vehicle:
+
+1. **`plate_results` (History Table)**: Stores ALL OCR attempts for complete audit trail
+2. **`plate_results_latest` (Authoritative Table)**: Stores ONE best result per (camera_id, vehicle_id) pair
+
+**Confidence-Based Update Logic**:
+
+- Uses "best confidence wins" strategy
+- Lower confidence OCR results are ignored for latest table updates
+- History preserved for debugging and performance analysis
+- Automatic timestamp tracking (first_seen, last_updated)
+
+**Schema Enhancement**:
+
+```sql
+-- History table (all attempts) - EXISTING
+CREATE TABLE plate_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts INTEGER DEFAULT (strftime('%s','now')*1000),
+    camera_id TEXT,
+    vehicle_id INTEGER,
+    vehicle_class TEXT,
+    lp_text TEXT,
+    ocr_conf REAL
+);
+
+-- Latest table (best results only) - NEW
+CREATE TABLE plate_results_latest (
+    camera_id TEXT,
+    vehicle_id INTEGER,
+    vehicle_class TEXT,
+    lp_text TEXT,
+    ocr_conf REAL,
+    first_seen INTEGER DEFAULT (strftime('%s','now')*1000),
+    last_updated INTEGER DEFAULT (strftime('%s','now')*1000),
+    PRIMARY KEY (camera_id, vehicle_id)  -- Ensures uniqueness
+);
+```
+
+**Benefits**:
+
+- ✅ **No duplicate plates per vehicle**: Guaranteed unique results
+- ✅ **Complete audit trail**: All OCR attempts preserved
+- ✅ **Optimal performance**: Latest table optimized for real-time queries
+- ✅ **Confidence-driven accuracy**: Best OCR results automatically selected
+- ✅ **Forensic capability**: Full history available for analysis
 
 **Usage**:
 
 ```python
-from traffic_monitor.utils.minidb import write_plate_result, write_vehicle_count
+from traffic_monitor.utils.minidb import write_plate_result, get_latest_plate_result
 
-# Store plate detection
-write_plate_result(
-    camera_id="cam-01",
-    vehicle_id=123,
-    lp_text="ABC123",
-    ocr_conf=0.95
-)
+# Multiple OCR attempts for same vehicle - only best confidence survives in latest table
+write_plate_result(camera_id="cam-01", vehicle_id=123, vehicle_class="car", lp_text="ABC123", ocr_conf=0.75)  # Initial
+write_plate_result(camera_id="cam-01", vehicle_id=123, vehicle_class="car", lp_text="ABG123", ocr_conf=0.60)  # Ignored
+write_plate_result(camera_id="cam-01", vehicle_id=123, vehicle_class="car", lp_text="ABC123", ocr_conf=0.95)  # Updates latest
 
-# Store vehicle count
-write_vehicle_count(
-    camera_id="cam-01",
-    total_count=42,
-    class_counts={"car": 30, "truck": 12}
-)
+# Get authoritative result
+latest = get_latest_plate_result("cam-01", 123)
+# Returns: {"lp_text": "ABC123", "ocr_conf": 0.95, "first_seen": 1234..., "last_updated": 1234...}
+```
+
+**Configuration**:
+
+```yaml
+database:
+  path: "data/db/traffic_monitor.db"
+  reset_on_startup: false # Set to true to delete and recreate DB on each startup
+  pragmas:
+    journal_mode: "WAL"
+    synchronous: "NORMAL"
+    cache_size: -64000
+    temp_store: "MEMORY"
 ```
 
 ## Deprecation Warnings
@@ -126,9 +198,51 @@ def lp_detector_process(...):
 
 ```yaml
 ocr_reader:
+  backend: "paddleocr"
+  lang: "en"
+  use_gpu: false
   hub_model_name: "global-plates-mobile-vit-v2-model"
-  device: "auto"
-  conf_threshold: 0.5
+  device: "cpu" # Must be "cpu", "gpu:0", etc. - "auto" is not supported
+  conf_threshold: 0.6
+```
+
+### PaddleOCR Device Parameter Invalid Value
+
+**Issue**: The OCRReader process was crashing with `AssertionError: assert device_type.lower() in SUPPORTED_DEVICE_TYPE` because PaddleOCR doesn't support the `"auto"` device value, only specific values like `"cpu"`, `"gpu:0"`, `"gpu:1"`, etc.
+
+**Affected Files**:
+
+- `src/traffic_monitor/config/settings.yaml` ✅ **FIXED**
+- `src/traffic_monitor/services/ocr_reader.py` ✅ **FIXED**
+
+**Status**: ✅ **RESOLVED** - Changed device configuration from `"auto"` to `"cpu"` and removed auto mapping logic.
+
+**Error Message**:
+
+```
+AssertionError: assert device_type.lower() in SUPPORTED_DEVICE_TYPE
+2025-07-02 10:56:01.984 | ERROR | OCRReader | Failed to initialize PaddleOCR reader
+```
+
+**Root Cause**: PaddleOCR only supports explicit device values: `"cpu"`, `"gpu:0"`, `"npu:0"`, `"xpu:0"`, `"mlu:0"`, `"dcu:0"`. The `"auto"` value is not in the SUPPORTED_DEVICE_TYPE list.
+
+**Fix Applied**:
+
+```yaml
+# Configuration fix in settings.yaml:
+ocr_reader:
+  device: "cpu" # Changed from "auto"
+```
+
+```python
+# Code fix in ocr_reader.py - removed invalid auto mapping:
+device_override = config.get("device")
+if device_override:
+    if device_override.startswith("gpu"):
+        device = "cuda"
+    elif device_override == "cpu":
+        device = "cpu"
+    # Removed: elif device_override == "auto": device = "auto"
 ```
 
 ## VehicleCounter Service Issues

@@ -59,21 +59,27 @@ def main():
     vt_config["class_mapping"] = config["vehicle_detector"]["class_mapping"]
     vt_config["loguru"] = loguru_config
 
+    db_config = config.get("database", {})
+
     lp_config = config.get("lp_detector", {})
     lp_config["service_name"] = "LPDetector"
     lp_config["loguru"] = loguru_config
+    lp_config["database"] = db_config
 
     ocr_config = config.get("ocr_reader", {})
     ocr_config["service_name"] = "OCRReader"
     ocr_config["loguru"] = loguru_config
+    ocr_config["database"] = db_config
 
     vc_config = config.get("vehicle_counter", {})
     vc_config["service_name"] = "VehicleCounter"
     vc_config["loguru"] = loguru_config
+    vc_config["database"] = db_config
 
     vis_config = config.get("visualizer", {})
     vis_config["service_name"] = "Visualizer"
     vis_config["loguru"] = loguru_config
+    vis_config["database"] = db_config
 
     # Real-time queue sizes - keep only the latest frame to eliminate slow-motion lag
     frame_grabber_output_queue = mp.Queue(maxsize=1)        # Only latest frame

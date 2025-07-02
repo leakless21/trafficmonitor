@@ -15,37 +15,77 @@ The Persistence component provides lightweight SQLite-based data storage for the
 
 ### Database Schema
 
-#### plate_results table
+#### `plate_results` Table (History)
 
-```sql
-CREATE TABLE plate_results (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts           INTEGER DEFAULT (strftime('%s','now')*1000),  -- Unix timestamp in milliseconds
-    camera_id    TEXT,                                         -- Source camera identifier
-    vehicle_id   INTEGER,                                      -- Tracking ID from vehicle tracker
-    lp_text      TEXT,                                         -- Recognized license plate text
-    ocr_conf     REAL                                          -- OCR confidence score (0.0-1.0)
-);
+Stores ALL license plate detection attempts for complete audit trail.
+
+| Column          | Type                | Description                                                     |
+| --------------- | ------------------- | --------------------------------------------------------------- |
+| `id`            | INTEGER PRIMARY KEY | Auto-incrementing unique identifier                             |
+| `ts`            | INTEGER             | Unix timestamp in milliseconds (auto-generated if not provided) |
+| `camera_id`     | TEXT                | Camera identifier                                               |
+| `vehicle_id`    | INTEGER             | Vehicle tracking ID from the tracker                            |
+| `vehicle_class` | TEXT                | Vehicle class (e.g., "car", "truck", "bus", "motorcycle")       |
+| `lp_text`       | TEXT                | Extracted license plate text                                    |
+| `ocr_conf`      | REAL                | OCR confidence score (0.0 to 1.0)                               |
+
+**Purpose**: Complete forensic record of all OCR attempts for debugging and analysis.
+
+#### `plate_results_latest` Table (Authoritative)
+
+Stores ONE authoritative result per vehicle using "best confidence wins" strategy.
+
+| Column          | Type    | Description                                      |
+| --------------- | ------- | ------------------------------------------------ |
+| `camera_id`     | TEXT    | Camera identifier                                |
+| `vehicle_id`    | INTEGER | Vehicle tracking ID from the tracker             |
+| `vehicle_class` | TEXT    | Vehicle class (updated with latest detection)    |
+| `lp_text`       | TEXT    | Best confidence license plate text               |
+| `ocr_conf`      | REAL    | Highest OCR confidence score achieved            |
+| `first_seen`    | INTEGER | Unix timestamp of first detection (milliseconds) |
+| `last_updated`  | INTEGER | Unix timestamp of last update (milliseconds)     |
+
+**Primary Key**: `(camera_id, vehicle_id)` - ensures exactly one result per vehicle.
+
+**Purpose**: Fast, duplicate-free queries for real-time applications and dashboards.
+
+#### `vehicle_counts` Table
+
+Stores aggregated vehicle count data per frame or time window.
+
+| Column         | Type                | Description                                                     |
+| -------------- | ------------------- | --------------------------------------------------------------- |
+| `id`           | INTEGER PRIMARY KEY | Auto-incrementing unique identifier                             |
+| `ts`           | INTEGER             | Unix timestamp in milliseconds (auto-generated if not provided) |
+| `camera_id`    | TEXT                | Camera identifier                                               |
+| `total_count`  | INTEGER             | Total vehicle count                                             |
+| `class_counts` | TEXT                | JSON object with counts per vehicle class                       |
+
+**Indices**:
+
+- `idx_plate_cam_time` on `plate_results(camera_id, ts)` for history queries
+- `idx_counts_cam_time` on `vehicle_counts(camera_id, ts)` for time-range queries
+- `idx_plate_vehicle_class` on `plate_results(vehicle_class, ts)` for class-based filtering
+- `idx_latest_vehicle_class` on `plate_results_latest(vehicle_class)` for current state queries
+
+## Confidence-Based Update Logic
+
+The system implements a **"best confidence wins"** strategy:
+
+1. **ALL** OCR attempts are stored in `plate_results` (history table)
+2. **ONLY** the highest confidence result is stored/updated in `plate_results_latest`
+3. Lower confidence readings are **ignored** for updates but preserved in history
+4. Vehicle class and other fields are updated along with improved confidence readings
+
+### Update Behavior Example
+
 ```
-
-#### vehicle_counts table
-
-```sql
-CREATE TABLE vehicle_counts (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts           INTEGER DEFAULT (strftime('%s','now')*1000),  -- Unix timestamp in milliseconds
-    camera_id    TEXT,                                         -- Source camera identifier
-    total_count  INTEGER,                                      -- Total vehicles counted
-    class_counts TEXT                                          -- JSON object with class-specific counts
-);
+Vehicle ID 42 OCR attempts:
+1. "ABC123" (conf: 0.75) → Latest table: "ABC123" (0.75)
+2. "ABG123" (conf: 0.65) → Latest table: "ABC123" (0.75) [unchanged - lower confidence]
+3. "ABC123" (conf: 0.95) → Latest table: "ABC123" (0.95) [updated - higher confidence]
+4. "ABC12X" (conf: 0.80) → Latest table: "ABC123" (0.95) [unchanged - lower confidence]
 ```
-
-### Indexing Strategy
-
-- `idx_plate_cam_time`: Index on (camera_id, ts) for plate_results table
-- `idx_counts_cam_time`: Index on (camera_id, ts) for vehicle_counts table
-
-These indices optimize common query patterns filtering by camera and time range.
 
 ## Key Features
 
@@ -78,25 +118,42 @@ These indices optimize common query patterns filtering by camera and time range.
 - Configures database path and settings from application config
 - Sets database path (relative paths resolved from project root)
 - Stores pragma settings for database optimization
+- Stores `reset_on_startup` flag
 - Called before `init_db()` at application startup
 
 **`init_db() -> None`**
 
+- **Resets database if `reset_on_startup` is true**: Deletes the database file and associated WAL/SHM files.
 - Initializes database schema and indices
 - Applies pragma settings from configuration
 - Called once at application startup after configuration
 
-**`write_plate_result(**kwargs) -> None`\*\*
+**`write_plate_result(camera_id, vehicle_id, vehicle_class, lp_text, ocr_conf, ts=None)`**
 
-- Stores license plate detection results
-- Parameters: camera_id, vehicle_id, lp_text, ocr_conf, ts (optional)
+- Stores license plate detection results in BOTH history and latest tables
+- History table: ALL OCR attempts preserved for audit trail
+- Latest table: UPSERT with "best confidence wins" logic
+- Parameters: camera_id, vehicle_id, vehicle_class, lp_text, ocr_conf, ts (optional)
 - Automatic timestamp generation if not provided
+- **Confidence Logic**: Only updates latest table if new confidence > existing confidence
 
-**`write_vehicle_count(**kwargs) -> None`\*\*
+**`get_latest_plate_result(camera_id, vehicle_id)`**
 
-- Stores vehicle counting summaries
-- Parameters: camera_id, total_count, class_counts, ts (optional)
-- JSON serialization of class_counts dictionary
+- Retrieves the authoritative (highest confidence) result for a specific vehicle
+- Returns dict with all fields or None if not found
+- Fast lookup using PRIMARY KEY (camera_id, vehicle_id)
+
+**`get_all_latest_plates(camera_id=None)`**
+
+- Retrieves all authoritative plate results, optionally filtered by camera
+- Returns list of dicts with latest results only
+- Optimized for dashboard and real-time display use cases
+
+**`write_vehicle_count(camera_id, total_count, class_counts, ts=None)`**
+
+- Stores aggregated vehicle count data
+- Parameters: camera_id, total_count, class_counts (dict), ts (optional)
+- class_counts stored as JSON for flexible querying
 
 #### Internal Functions
 
@@ -122,6 +179,9 @@ database:
   # Path to SQLite database file (relative to project root)
   path: "data/db/traffic_monitor.db"
 
+  # Option to reset the database file on every application startup
+  reset_on_startup: false
+
   # SQLite optimization settings
   pragmas:
     journal_mode: "WAL" # Write-Ahead Logging for better concurrency
@@ -143,6 +203,7 @@ init_db()
 write_plate_result(
     camera_id="cam-01",
     vehicle_id=123,
+    vehicle_class="car",
     lp_text="ABC123",
     ocr_conf=0.95
 )
@@ -174,6 +235,7 @@ from traffic_monitor.utils.minidb import write_plate_result
 write_plate_result(
     camera_id=camera_id,
     vehicle_id=track_id,
+    vehicle_class=vehicle_class,
     lp_text=plate_text,
     ocr_conf=confidence
 )
@@ -191,36 +253,90 @@ write_vehicle_count(
 )
 ```
 
+#### With Vehicle Tracker
+
+```python
+# In tracking service - store result with confidence evaluation
+def store_detection_result(camera_id, track_id, vehicle_class, plate_text, confidence):
+    write_plate_result(
+        camera_id=camera_id,
+        vehicle_id=track_id,
+        vehicle_class=vehicle_class,
+        lp_text=plate_text,
+        ocr_conf=confidence
+    )
+
+    # Get current best result for this vehicle
+    latest = get_latest_plate_result(camera_id, track_id)
+    if latest and latest['ocr_conf'] >= MIN_CONFIDENCE_THRESHOLD:
+        # Use authoritative result for display/alerts
+        display_plate = latest['lp_text']
+```
+
+#### With Analytics/Dashboard
+
+```python
+# Get current vehicle inventory
+current_vehicles = get_all_latest_plates("cam-01")
+
+# Show only high-confidence results
+reliable_detections = [
+    v for v in current_vehicles
+    if v['ocr_conf'] >= 0.90
+]
+```
+
 ## Query Examples
 
-### Retrieve Recent Plate Detections
+### Current State Queries (Latest Table)
 
 ```sql
-SELECT ts, camera_id, lp_text, ocr_conf
+-- Dashboard: Current vehicles with best plates
+SELECT vehicle_id, lp_text, ocr_conf, vehicle_class,
+       datetime(first_seen/1000, 'unixepoch') as first_seen,
+       datetime(last_updated/1000, 'unixepoch') as last_updated
+FROM plate_results_latest
+WHERE camera_id = 'cam-001'
+ORDER BY last_updated DESC;
+
+-- High confidence detections only
+SELECT * FROM plate_results_latest WHERE ocr_conf >= 0.90;
+
+-- Count by vehicle class (current state)
+SELECT vehicle_class, COUNT(*) as vehicle_count, AVG(ocr_conf) as avg_confidence
+FROM plate_results_latest
+GROUP BY vehicle_class;
+```
+
+### Historical Analysis (History Table)
+
+```sql
+-- Audit trail for specific vehicle
+SELECT lp_text, ocr_conf, datetime(ts/1000, 'unixepoch') as timestamp
 FROM plate_results
-WHERE camera_id = 'cam-01'
-  AND ts > (strftime('%s','now')-3600)*1000  -- Last hour
-ORDER BY ts DESC;
-```
+WHERE camera_id = 'cam-001' AND vehicle_id = 42
+ORDER BY ts;
 
-### Get Vehicle Count Summary
+-- OCR performance analysis
+SELECT
+    vehicle_id,
+    COUNT(*) as total_attempts,
+    MIN(ocr_conf) as worst_conf,
+    MAX(ocr_conf) as best_conf,
+    AVG(ocr_conf) as avg_conf
+FROM plate_results
+WHERE camera_id = 'cam-001'
+GROUP BY vehicle_id
+HAVING COUNT(*) > 1;
 
-```sql
-SELECT camera_id, COUNT(*) as events, AVG(total_count) as avg_count
-FROM vehicle_counts
-WHERE ts > (strftime('%s','now')-86400)*1000  -- Last 24 hours
-GROUP BY camera_id;
-```
-
-### Extract Class-Specific Counts
-
-```sql
-SELECT ts, camera_id, total_count,
-       json_extract(class_counts, '$.car') as cars,
-       json_extract(class_counts, '$.truck') as trucks
-FROM vehicle_counts
-ORDER BY ts DESC
-LIMIT 100;
+-- Time-based detection patterns
+SELECT
+    DATE(datetime(ts/1000, 'unixepoch')) as date,
+    vehicle_class,
+    COUNT(*) as detections
+FROM plate_results
+GROUP BY date, vehicle_class
+ORDER BY date DESC;
 ```
 
 ## Testing

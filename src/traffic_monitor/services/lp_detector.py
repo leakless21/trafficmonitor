@@ -111,9 +111,10 @@ def lp_detector_process(
                 detections = lp_detector.find_plates(vehicle_crop)
                 
                 if detections is not None:
-                    logger.debug(f"[{process_name}] Detected license plate on {vehicle['class_name']} (ID: {vehicle['track_id']})")
+                    lp_bbox_on_crop, lp_confidence = detections
+                    logger.debug(f"[{process_name}] Plate bbox {lp_bbox_on_crop} conf={lp_confidence:.2f} for vehicle {vehicle['track_id']}")
                 else:
-                    logger.debug(f"[{process_name}] No license plate detected on {vehicle['class_name']} (ID: {vehicle['track_id']})")
+                    logger.debug(f"[{process_name}] No plate detected on {vehicle['class_name']} id={vehicle['track_id']}")
 
                 if detections is not None:
                     lp_bbox_on_crop, lp_confidence = detections

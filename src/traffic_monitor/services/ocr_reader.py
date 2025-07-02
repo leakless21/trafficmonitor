@@ -17,6 +17,7 @@ except ImportError:  # pragma: no cover
     PaddleOCR = None  # type: ignore
 
 from ..utils.custom_types import PlateDetectionMessage, OCRResultMessage
+from ..utils.minidb import configure_database, write_plate_result
 
 class OCRReader:
     def __init__(self, config: Dict[str, Any]):
@@ -46,14 +47,12 @@ class OCRReader:
                     device = "cuda"
                 elif device_override == "cpu":
                     device = "cpu"
-                elif device_override == "auto":
-                    device = "auto"
             lang: str = str(config.get("lang", "en"))
             try:
                 # Initialize PaddleOCR with v5 API (device parameter instead of use_gpu)
                 self.reader = PaddleOCR(
                     use_doc_orientation_classify=False,
-                    use_doc_unwarping=False,
+                    use_doc_unwarping=True,
                     use_textline_orientation=False,
                     lang=lang,
                     device=device,
@@ -150,6 +149,9 @@ def ocr_reader_process(config: Dict[str, Any], lp_detector_output_queue: Queue, 
     from ..utils.logging_config import setup_logging
     setup_logging()  # Setup logging for this process
     
+    # Configure database for this subprocess (inherits path from parent config)
+    configure_database(config)
+    
     process_name = mp.current_process().name
     logger.info(f"[OCRReader] Process {process_name} started")
     try:
@@ -199,6 +201,17 @@ def ocr_reader_process(config: Dict[str, Any], lp_detector_output_queue: Queue, 
                 
                 vehicle_class = lp_message.get('vehicle_class', 'unknown')
                 logger.info(f"[OCRReader] Detected plate '{lp_text}' for {vehicle_class} (ID: {lp_message['vehicle_id']}) with confidence {ocr_confidence:.3f}")
+                # Persist to database
+                try:
+                    write_plate_result(
+                        camera_id=lp_message['camera_id'],
+                        vehicle_id=lp_message['vehicle_id'],
+                        lp_text=lp_text,
+                        ocr_conf=ocr_confidence,
+                        ts=int(lp_message['timestamp'] * 1000)
+                    )
+                except Exception as db_exc:
+                    logger.exception(f"[OCRReader] Failed to write plate result to database: {db_exc}")
             else:
                 vehicle_class = lp_message.get('vehicle_class', 'unknown')
                 logger.debug(f"[OCRReader] No plate text extracted from {vehicle_class} (ID: {lp_message['vehicle_id']})")

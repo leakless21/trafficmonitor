@@ -17,9 +17,9 @@
 
 frame_grabber:
   video_source: "data/videos/input/IMG_3637.MOV"
-  resize_resolution: [1280, 720]
+  resize_resolution: [1920, 1080]
   log_every_n_frames: 60 # Log every 30 frames
-  process_every_n_frame: 3 # Increased from 3 to 5 for better real-time performance
+  process_every_n_frame: 2 # Increased from 3 to 5 for better real-time performance
 
 vehicle_detector:
   model_path: "data/models/best(8).pt"
@@ -33,7 +33,7 @@ vehicle_detector:
     5: "truck"
 
 vehicle_tracker:
-  tracker_type: "ocsort"
+  tracker_type: "bytetrack"
   half: true
   device: "cpu"
   reid_model_path: None
@@ -69,16 +69,16 @@ loguru:
   # Suppresses verbose logs from matplotlib, urllib3, requests, PIL
 
 lp_detector:
-  model_path: "data/models/lp.pt"
-  conf_threshold: 0.8
+  model_path: "data/models/plate_v8n.pt"
+  conf_threshold: 0.65
 
 ocr_reader:
-  backend: "paddleocr" # or "paddleocr"
+  backend: "fast_plate_ocr" # or "paddleocr"
   lang: "en" # Language code for PaddleOCR backend
   use_gpu: false # Whether to enable GPU for PaddleOCR backend
   hub_model_name: "global-plates-mobile-vit-v2-model"
-  device: "auto"
-  conf_threshold: 0.6
+  device: "cpu"
+  conf_threshold: 0.7
 
 vehicle_counter:
   counting_lines:
@@ -148,6 +148,9 @@ visualizer:
 database:
   # Path to SQLite database file (relative to project root)
   path: "data/db/traffic_monitor.db"
+
+  # Option to reset the database file on every application startup
+  reset_on_startup: true # Delete and recreate DB on each startup
 
   # SQLite optimization settings
   pragmas:

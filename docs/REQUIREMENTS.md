@@ -82,11 +82,16 @@
 ### FR11: Data Persistence ✅ **IMPLEMENTED**
 
 - The system shall persist plate recognition results and vehicle count data in SQLite for later analytics. ✅
-- The system shall store timestamp, camera ID, vehicle ID, license plate text, and OCR confidence for each plate detection. ✅
+- The system shall store timestamp, camera ID, vehicle ID, vehicle class, license plate text, and OCR confidence for each plate detection. ✅
 - The system shall store timestamp, camera ID, total count, and class-specific counts for vehicle counting events. ✅
 - The system shall use WAL mode for better concurrency and automatic retry on database locks. ✅
 - The system shall support configurable database path and SQLite optimization settings via settings.yaml. ✅
 - The system shall automatically create database directories and apply PRAGMA settings from configuration. ✅
+- The system shall provide an option to reset (delete and re-create) the database file on every startup. ✅
+- The system shall index vehicle class data for efficient querying and filtering by vehicle type. ✅
+- The system shall eliminate duplicate plate readings per vehicle using confidence-based selection. ✅
+- The system shall maintain a complete audit trail of all OCR attempts while providing authoritative "latest" results. ✅
+- The system shall implement "best confidence wins" logic to ensure only the highest quality plate reading is used for each vehicle. ✅
 
 ## Non-Functional Requirements
 

@@ -10,6 +10,7 @@ from shapely.geometry import LineString, Point
 from ..utils.custom_types import TrackedVehicleMessage, VehicleCountMessage
 from ..utils.utils import relative_to_absolute_coords
 from ..utils.logging_config import setup_logging
+from ..utils.minidb import configure_database, write_vehicle_count
 
 class Counter:
     def __init__(self, counting_lines_config: list):
@@ -104,6 +105,8 @@ class Counter:
     
 def vehicle_counter_process(config: dict, input_queue: Queue, output_queue: Queue, shutdown_event: Event):
     setup_logging(config.get("loguru"))  # Initialize logging for this process
+    # Configure database for this subprocess
+    configure_database(config)
     process_name = mp.current_process().name
     logger.info(f"[VehicleCounter] Process {process_name} started")
     try:
@@ -156,6 +159,16 @@ def vehicle_counter_process(config: dict, input_queue: Queue, output_queue: Queu
                         pass  # Queue was empty, which is fine
                     
                     output_queue.put_nowait(count_update_message)  # Put new count without blocking
+                    # Persist to database
+                    try:
+                        write_vehicle_count(
+                            camera_id=count_update_message["camera_id"],
+                            total_count=count_update_message["total_count"],
+                            class_counts=count_update_message["class_counts"],
+                            ts=int(count_update_message["timestamp"] * 1000)
+                        )
+                    except Exception as db_exc:
+                        logger.exception(f"[VehicleCounter] Failed to write vehicle count to database: {db_exc}")
                 except Full:
                     # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
                     logger.warning("[VehicleCounter] Output queue is full, dropping count message")
