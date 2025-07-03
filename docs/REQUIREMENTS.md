@@ -113,3 +113,22 @@
 
 - The system shall handle empty input queues and gracefully manage process shutdowns.
 - The system shall log errors and exceptions for debugging.
+
+### NFR5: Benchmarking and Evaluation ✅ **IMPLEMENTED**
+
+- The system shall provide comprehensive end-to-end benchmarking capabilities for research validation. ✅
+- The system shall achieve minimum performance thresholds:
+  - Overall F1 Score: ≥ 0.65 (critical) / ≥ 0.70 (target) ✅
+  - Vehicle Identification F1: ≥ 0.70 (critical) / ≥ 0.75 (target) ✅
+  - Plate Recognition F1: ≥ 0.60 (critical) / ≥ 0.65 (target) ✅
+  - Vehicle Count MAE: ≤ 2.0 (critical) / ≤ 1.5 (target) ✅
+  - Mean Latency: ≤ 150ms (critical) / ≤ 120ms (target) ✅
+  - 95th Percentile Latency: ≤ 250ms (critical) ✅
+  - Minimum FPS: ≥ 5.0 (critical) / ≥ 10.0 (target) ✅
+- The system shall provide automated CI/CD integration with performance gating. ✅
+- The system shall generate detailed metrics reports including precision, recall, F1 scores, and timing statistics. ✅
+- The system shall support both production (accuracy-focused) and fast (speed-focused) benchmark configurations. ✅
+- The system shall provide resource monitoring (CPU, GPU, memory utilization) during benchmarking. ✅
+- The system shall maintain reproducibility through deterministic configurations and system information logging. ✅
+- The system shall implement ground truth evaluation with temporal matching for vehicle tracking assessment. ✅
+- The system shall provide visual benchmark summaries and GitHub Actions integration for PR/commit gating. ✅

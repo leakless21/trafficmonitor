@@ -1,0 +1,96 @@
+# Production Benchmark Configuration
+# Optimized for accuracy and stability over speed
+
+frame_grabber:
+  video_source: "data/videos/input/IMG_3637.MOV" # Will be overridden by benchmark runner
+  resize_resolution: [1280, 720]
+  log_every_n_frames: 120 # Reduced logging for benchmarking
+  process_every_n_frame: 1 # Process every frame for maximum accuracy
+
+vehicle_detector:
+  model_path: "data/models/best(8).pt"
+  conf_threshold: 0.6 # Higher confidence for better precision
+  class_mapping:
+    0: "bicycle"
+    1: "bike"
+    2: "bus"
+    3: "car"
+    4: "person"
+    5: "truck"
+
+vehicle_tracker:
+  tracker_type: "bytetrack" # Fast and accurate tracker
+  half: true
+  device: "cpu" # Use CPU for consistent benchmarking
+  reid_model_path: None
+  evolve_param_dict: None
+  per_class: None
+
+lp_detector:
+  model_path: "data/models/plate_v8n.pt"
+  conf_threshold: 0.65 # Higher confidence for plate detection
+
+ocr_reader:
+  backend: "paddleocr"
+  lang: "en"
+  use_gpu: false # CPU for consistency
+  hub_model_name: "global-plates-mobile-vit-v2-model"
+  device: "cpu"
+  conf_threshold: 0.7 # Higher confidence for OCR
+
+vehicle_counter:
+  counting_lines:
+    - # Primary counting line
+      - [0.31, 0.22]
+      - [0.85, 0.33]
+
+visualizer:
+  font: "FONT_HERSHEY_SIMPLEX"
+  font_scale: 0.6
+  font_thickness: 2
+  ocr_duration: 3.0
+  save_to_file: true # Enable offline mode for benchmarking
+  save_path: "output/benchmark_videos/"
+  output_fourcc: "mp4v"
+
+  counting_lines:
+    - # Copy from vehicle_counter
+      - [0.31, 0.22]
+      - [0.85, 0.33]
+  counting_line_color: [0, 255, 255]
+  counting_line_thickness: 3
+
+  class_colors:
+    car: [0, 119, 187]
+    truck: [14, 127, 255]
+    bus: [44, 160, 44]
+    motorcycle: [40, 39, 214]
+    bicycle: [189, 103, 148]
+    person: [75, 86, 140]
+    van: [194, 119, 227]
+    trailer: [127, 127, 127]
+    scooter: [34, 189, 188]
+    boat: [207, 190, 23]
+  default_color: [255, 255, 255]
+
+# Benchmark-specific logging configuration
+loguru:
+  level: "INFO" # Reduced logging for performance
+  format: "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{process.name: <15}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+  use_json: false
+  file_path: "logs/benchmark.log"
+  file_rotation: "10 MB"
+  file_retention: "3 days"
+  file_compression: "zip"
+  log_file_overwrite: true
+  terminal_output_enabled: false # Disable console output for clean benchmarking
+
+# Database configuration for benchmarking
+database:
+  path: "data/db/benchmark.db"
+  reset_on_startup: true # Fresh database for each benchmark
+  pragmas:
+    journal_mode: "WAL"
+    synchronous: "NORMAL"
+    cache_size: -64000
+    temp_store: "MEMORY"

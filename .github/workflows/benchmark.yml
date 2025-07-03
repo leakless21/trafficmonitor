@@ -1,0 +1,253 @@
+name: E2E Benchmark
+
+on:
+  # Run on pull requests
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "src/**"
+      - "configs/**"
+      - "tools/**"
+      - "pyproject.toml"
+      - ".github/workflows/benchmark.yml"
+
+  # Run on pushes to main
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "configs/**"
+      - "tools/**"
+      - "pyproject.toml"
+
+  # Allow manual runs
+  workflow_dispatch:
+    inputs:
+      config:
+        description: "Benchmark configuration"
+        required: true
+        default: "configs/benchmark/fast.yaml"
+        type: choice
+        options:
+          - "configs/benchmark/fast.yaml"
+          - "configs/benchmark/prod.yaml"
+      strict:
+        description: "Strict mode (treat warnings as failures)"
+        required: false
+        default: false
+        type: boolean
+
+# Cancel previous runs if new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: E2E Benchmark
+    runs-on: self-hosted # Use self-hosted runner with GPU access
+    timeout-minutes: 30
+
+    # Only run if models are available (not on forks without access)
+    if: github.repository == 'your-username/trafficmonitor' || github.event_name == 'workflow_dispatch'
+
+    outputs:
+      passed: ${{ steps.evaluate.outputs.passed }}
+      overall_f1: ${{ steps.evaluate.outputs.overall_f1 }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Need full history for benchmarking
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@v0.3.0
+        with:
+          pixi-version: v0.7.0
+
+      - name: Cache models
+        uses: actions/cache@v3
+        with:
+          path: data/models/
+          key: ${{ runner.os }}-models-${{ hashFiles('tools/download_model.py') }}
+          restore-keys: |
+            ${{ runner.os }}-models-
+
+      - name: Download models if needed
+        run: |
+          if [ ! -f "data/models/best(8).pt" ]; then
+            echo "Downloading required models..."
+            pixi run python tools/download_model.py
+          else
+            echo "Models already cached"
+          fi
+
+      - name: Setup benchmark environment
+        run: |
+          # Create necessary directories
+          mkdir -p output/benchmarks logs
+
+          # Set benchmark configuration
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "BENCHMARK_CONFIG=${{ github.event.inputs.config }}" >> $GITHUB_ENV
+            echo "STRICT_MODE=${{ github.event.inputs.strict }}" >> $GITHUB_ENV
+          elif [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "BENCHMARK_CONFIG=configs/benchmark/fast.yaml" >> $GITHUB_ENV
+            echo "STRICT_MODE=false" >> $GITHUB_ENV
+          else
+            echo "BENCHMARK_CONFIG=configs/benchmark/prod.yaml" >> $GITHUB_ENV
+            echo "STRICT_MODE=true" >> $GITHUB_ENV
+          fi
+
+          # Set unique output directory
+          echo "OUTPUT_DIR=output/benchmarks/${{ github.sha }}" >> $GITHUB_ENV
+
+      - name: Run E2E benchmark
+        id: benchmark
+        run: |
+          echo "Running benchmark with config: $BENCHMARK_CONFIG"
+          echo "Output directory: $OUTPUT_DIR"
+
+          pixi run python tools/benchmark_e2e.py \
+            --config "$BENCHMARK_CONFIG" \
+            --videos configs/benchmark/eval_videos.yaml \
+            --output "$OUTPUT_DIR" \
+            --profile \
+            --verbose
+        env:
+          # Disable display for headless operation
+          DISPLAY: ""
+          # Set environment for reproducibility
+          PYTHONHASHSEED: 42
+
+      - name: Evaluate thresholds
+        id: evaluate
+        run: |
+          echo "Evaluating benchmark results..."
+
+          # Determine if strict mode should be used
+          STRICT_FLAG=""
+          if [ "$STRICT_MODE" == "true" ]; then
+            STRICT_FLAG="--strict"
+          fi
+
+          # Run threshold evaluation
+          pixi run python tools/assert_thresholds.py \
+            "$OUTPUT_DIR/metrics.json" \
+            --output-format github \
+            $STRICT_FLAG
+        continue-on-error: true
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: benchmark-results-${{ github.sha }}
+          path: |
+            ${{ env.OUTPUT_DIR }}/
+            logs/benchmark*.log
+          retention-days: 30
+
+      - name: Generate benchmark report
+        if: always()
+        run: |
+          echo "## 🚀 E2E Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "$OUTPUT_DIR/metrics.json" ]; then
+            # Extract key metrics for display
+            OVERALL_F1=$(python -c "import json; data=json.load(open('$OUTPUT_DIR/metrics.json')); print(f\"{data['metrics']['overall']['f1']:.3f}\")")
+            VEHICLE_F1=$(python -c "import json; data=json.load(open('$OUTPUT_DIR/metrics.json')); print(f\"{data['metrics']['vehicle_identification']['f1']:.3f}\")")
+            PLATE_F1=$(python -c "import json; data=json.load(open('$OUTPUT_DIR/metrics.json')); print(f\"{data['metrics']['plate_recognition']['f1']:.3f}\")")
+            COUNT_MAE=$(python -c "import json; data=json.load(open('$OUTPUT_DIR/metrics.json')); print(f\"{data['metrics']['counting']['mae']:.1f}\")")
+            FPS=$(python -c "import json; data=json.load(open('$OUTPUT_DIR/metrics.json')); print(f\"{data['metrics']['timing']['fps']:.1f}\")")
+            
+            echo "| Metric | Value | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|--------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Overall F1 | $OVERALL_F1 | ${{ steps.evaluate.outputs.passed == 'true' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Vehicle F1 | $VEHICLE_F1 | - |" >> $GITHUB_STEP_SUMMARY
+            echo "| Plate F1 | $PLATE_F1 | - |" >> $GITHUB_STEP_SUMMARY
+            echo "| Count MAE | $COUNT_MAE | - |" >> $GITHUB_STEP_SUMMARY
+            echo "| FPS | $FPS | - |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Configuration:** \`$BENCHMARK_CONFIG\`" >> $GITHUB_STEP_SUMMARY
+            echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "${{ steps.evaluate.outputs.passed }}" != "true" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ **Some thresholds failed. Check the benchmark artifacts for details.**" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "❌ **Benchmark failed to generate results**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const path = '${{ env.OUTPUT_DIR }}/metrics.json';
+
+            let comment = '## 🚀 E2E Benchmark Results\n\n';
+
+            if (fs.existsSync(path)) {
+              const data = JSON.parse(fs.readFileSync(path, 'utf8'));
+              const metrics = data.metrics;
+              
+              const status = '${{ steps.evaluate.outputs.passed }}' === 'true' ? '✅ PASSED' : '❌ FAILED';
+              
+              comment += `**Status:** ${status}\n\n`;
+              comment += '| Metric | Value |\n';
+              comment += '|--------|-------|\n';
+              comment += `| Overall F1 | ${metrics.overall.f1.toFixed(3)} |\n`;
+              comment += `| Vehicle F1 | ${metrics.vehicle_identification.f1.toFixed(3)} |\n`;
+              comment += `| Plate F1 | ${metrics.plate_recognition.f1.toFixed(3)} |\n`;
+              comment += `| Count MAE | ${metrics.counting.mae.toFixed(1)} |\n`;
+              comment += `| FPS | ${metrics.timing.fps.toFixed(1)} |\n`;
+              comment += `\n*Config: \`${{ env.BENCHMARK_CONFIG }}\`*`;
+            } else {
+              comment += '❌ **Benchmark failed to complete**';
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Fail job if thresholds not met
+        if: steps.evaluate.outputs.passed != 'true'
+        run: |
+          echo "::error::Benchmark thresholds not met"
+          exit 1
+
+  # Optional: Compare with baseline
+  compare:
+    name: Compare with baseline
+    runs-on: ubuntu-latest
+    needs: benchmark
+    if: github.event_name == 'pull_request' && always()
+
+    steps:
+      - name: Download current results
+        uses: actions/download-artifact@v3
+        with:
+          name: benchmark-results-${{ github.sha }}
+          path: current/
+
+      # This would download results from main branch for comparison
+      # Implementation depends on your storage strategy (artifacts, S3, etc.)
+      - name: Compare with baseline
+        run: |
+          echo "Baseline comparison would be implemented here"
+          # Compare current/metrics.json with baseline
+          # Generate performance delta report

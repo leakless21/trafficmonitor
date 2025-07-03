@@ -1,0 +1,59 @@
+# Performance Benchmark Configuration - Standard Mode
+# Balanced configuration for realistic performance assessment
+
+# Processing settings
+process_every_nth_frame: 1 # Process all frames
+resolution:
+  width: 1280
+  height: 720
+
+# Detection settings
+detection:
+  model: "yolov8s.pt" # Small model balance
+  confidence: 0.5
+  device: "auto"
+  max_detections: 100
+
+# Tracking settings
+tracking:
+  tracker: "botsort" # Standard tracker
+  max_tracks: 50
+  track_buffer: 30
+
+# License plate settings
+license_plate:
+  enabled: true
+  detection_frequency: 5 # Every 5 frames
+  crop_expansion: 0.15
+  min_confidence: 0.5
+
+# OCR settings
+ocr:
+  enabled: true
+  engine: "paddleocr"
+  batch_size: 4
+  use_gpu: true
+  lang: "en"
+
+# Counting settings
+counting:
+  lines_enabled: true
+  zone_counting: true # Enable zone counting
+
+# Visualization (disabled for performance)
+visualization:
+  enabled: false
+  show_tracks: false
+  show_detections: false
+
+# Performance settings
+performance:
+  multiprocessing: true
+  queue_size: 20
+  gpu_memory_fraction: 0.5
+
+# Logging
+logging:
+  level: "INFO"
+  performance_metrics: true
+  save_frames: false

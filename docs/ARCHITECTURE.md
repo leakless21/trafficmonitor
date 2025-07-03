@@ -180,3 +180,67 @@ The system utilizes `multiprocessing.Queue` for inter-process communication betw
 
 - **Internal:** Built-in `sqlite3` module, `loguru` for logging, `pathlib` for file operations.
 - **External:** None - uses Python standard library only.
+
+### E2E Benchmarking Pipeline
+
+**Purpose:** The E2E (End-to-End) benchmarking system provides comprehensive evaluation of the complete traffic monitoring pipeline, measuring both accuracy and performance metrics for research validation and CI/CD integration.
+
+**Area of Responsibility:**
+
+- Running the complete pipeline on evaluation video sets with ground truth annotations.
+- Collecting predictions from all components (vehicle detection, tracking, plate recognition, counting).
+- Computing system-level metrics that combine component performances (vehicle identification F1, plate recognition accuracy, counting MAE).
+- Profiling resource usage (CPU, GPU, memory) and timing (latency, throughput).
+- Automatically gating CI/CD pipelines based on performance thresholds.
+
+**Compute Requirements:**
+
+- Requires the same compute resources as the main pipeline (CPU/GPU for inference).
+- Additional overhead for profiling and metrics computation (~5-10%).
+- Configurable for speed vs accuracy tradeoffs (fast vs production configs).
+
+**Storage Requirements:**
+
+- Evaluation videos stored in `data/eval/videos/`.
+- Ground truth events in JSON format in `data/eval/ground_truth/`.
+- Benchmark results output to `output/benchmarks/` with timestamped directories.
+- Detailed profiling data saved as CSV for analysis.
+
+**Interfaces:**
+
+- **Input:**
+  - Video configuration YAML (`configs/benchmark/eval_videos.yaml`)
+  - Pipeline configuration YAML (`configs/benchmark/prod.yaml` or `fast.yaml`)
+  - Ground truth event files (`*.events.json`)
+- **Output:**
+  - Comprehensive metrics JSON (`metrics.json`)
+  - Detailed profiling CSV (`profiling.csv`)
+  - Predicted events JSON (`*.pred.json`)
+  - CI/CD status reports and GitHub Actions summaries
+
+**Dependencies:**
+
+- **Internal:** All pipeline components, `traffic_monitor.eval.e2e_evaluator`, `traffic_monitor.utils.profiler`
+- **External:** `psutil` for system monitoring, `pynvml` for GPU monitoring, `pandas` for profiling output
+
+**Key Components:**
+
+1. **Profiler (`src/traffic_monitor/utils/profiler.py`)**: Lightweight timing and resource monitoring
+2. **E2E Evaluator (`src/traffic_monitor/eval/e2e_evaluator.py`)**: Metrics computation and ground truth matching
+3. **Benchmark Runner (`tools/benchmark_e2e.py`)**: Main orchestration script
+4. **Threshold Checker (`tools/assert_thresholds.py`)**: CI/CD gating based on performance requirements
+5. **GitHub Actions Workflow (`.github/workflows/benchmark.yml`)**: Automated CI integration
+
+**Evaluation Metrics:**
+
+- **Vehicle Identification**: Precision, Recall, F1 (temporal matching of detected tracks)
+- **Plate Recognition**: Exact-match accuracy for recognized license plates
+- **Vehicle Counting**: MAE, RMSE, sMAPE against ground truth counts
+- **Queue Length**: MAE for traffic queue estimation
+- **Performance**: Mean/P95 latency, FPS, CPU/GPU utilization
+- **Overall**: Combined F1 score for system-level assessment
+
+**Configuration Profiles:**
+
+- **Production (`configs/benchmark/prod.yaml`)**: Maximum accuracy, full resolution, all frames
+- **Fast (`configs/benchmark/fast.yaml`)**: Speed optimized, lower resolution, frame skipping

@@ -1,0 +1,21 @@
+# Evaluation Video Configuration for E2E Benchmark
+# This file lists the videos used for end-to-end evaluation
+
+videos:
+  # Development test video (using existing test video)
+  - name: "test_video_1"
+    path: "data/videos/input/IMG_3637.MOV"
+    description: "Primary test video for development"
+    duration_seconds: 30
+    expected_vehicles: 5
+    expected_plates: 3
+
+  # Additional test videos can be added here when available
+  # - name: "test_video_2"
+  #   path: "data/eval/videos/traffic_night.mp4"
+  #   description: "Night traffic scenario"
+  #   duration_seconds: 60
+  #   expected_vehicles: 12
+  #   expected_plates: 8
+# Ground truth files should be named as: {video_name}.events.json
+# Located in: data/eval/ground_truth/
