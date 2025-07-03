@@ -81,17 +81,35 @@ def main():
     vis_config["loguru"] = loguru_config
     vis_config["database"] = db_config
 
-    # Real-time queue sizes - keep only the latest frame to eliminate slow-motion lag
-    frame_grabber_output_queue = mp.Queue(maxsize=1)        # Only latest frame
-    vehicle_detector_output_queue = mp.Queue(maxsize=1)     # Only latest detection  
-    vehicle_tracker_output_queue = mp.Queue(maxsize=1)      # Only latest tracking
-    lp_detector_output_queue = mp.Queue(maxsize=1)          # Only latest LP detection
-    ocr_reader_output_queue = mp.Queue(maxsize=1)           # Only latest OCR
-    vehicle_counter_output_queue = mp.Queue(maxsize=1)      # Only latest count
-    visualizer_input_queue = mp.Queue(maxsize=1)            # Only latest for display
+    # Import queue utilities for mode-aware queue management
+    from .utils.queue_utils import is_offline_mode, get_queue_size_for_mode
+    
+    # Determine processing mode and queue sizes
+    offline_mode = is_offline_mode(vis_config)
+    queue_size = get_queue_size_for_mode(offline_mode)
+    
+    mode_desc = "offline (preserve all frames)" if offline_mode else "real-time (drop old frames)"
+    logger.info(f"Queue management mode: {mode_desc}, queue size: {queue_size if queue_size > 0 else 'unbounded'}")
+    
+    # Create queues with mode-appropriate sizing
+    frame_grabber_output_queue = mp.Queue(maxsize=queue_size)
+    vehicle_detector_output_queue = mp.Queue(maxsize=queue_size)
+    vehicle_tracker_output_queue = mp.Queue(maxsize=queue_size)
+    lp_detector_output_queue = mp.Queue(maxsize=queue_size)
+    ocr_reader_output_queue = mp.Queue(maxsize=queue_size)
+    vehicle_counter_output_queue = mp.Queue(maxsize=queue_size)
+    visualizer_input_queue = mp.Queue(maxsize=queue_size)
 
-    lp_detector_input_queue = mp.Queue(maxsize=1)           # Only latest for LP processing
-    vehicle_counter_input_queue = mp.Queue(maxsize=1)       # Only latest for counting
+    lp_detector_input_queue = mp.Queue(maxsize=queue_size)
+    vehicle_counter_input_queue = mp.Queue(maxsize=queue_size)
+
+    # Pass offline mode to services that need it
+    fg_config["offline_mode"] = offline_mode
+    vd_config["offline_mode"] = offline_mode
+    vt_config["offline_mode"] = offline_mode
+    lp_config["offline_mode"] = offline_mode
+    ocr_config["offline_mode"] = offline_mode
+    vc_config["offline_mode"] = offline_mode
 
     # Create process configurations
     process_configs = [
@@ -101,7 +119,7 @@ def main():
         ("LPDetector", lp_detector_process, (lp_config, lp_detector_input_queue, lp_detector_output_queue, shutdown_event)),
         ("OCRReader", ocr_reader_process, (ocr_config, lp_detector_output_queue, ocr_reader_output_queue, shutdown_event)),
         ("VehicleCounter", vehicle_counter_process, (vc_config, vehicle_counter_input_queue, vehicle_counter_output_queue, shutdown_event)),
-        ("Distributor", distributor_process, (vehicle_tracker_output_queue, [lp_detector_input_queue, vehicle_counter_input_queue, visualizer_input_queue], shutdown_event)),
+        ("Distributor", distributor_process, (offline_mode, vehicle_tracker_output_queue, [lp_detector_input_queue, vehicle_counter_input_queue, visualizer_input_queue], shutdown_event)),
         ("Visualizer", visualize_process, (vis_config, visualizer_input_queue, ocr_reader_output_queue, vehicle_counter_output_queue, shutdown_event)),
     ]
 

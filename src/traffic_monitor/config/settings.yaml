@@ -17,9 +17,9 @@
 
 frame_grabber:
   video_source: "data/videos/input/IMG_3637.MOV"
-  resize_resolution: [1920, 1080]
+  resize_resolution: [1280, 720]
   log_every_n_frames: 60 # Log every 30 frames
-  process_every_n_frame: 2 # Increased from 3 to 5 for better real-time performance
+  process_every_n_frame: 1 # Increased from 3 to 5 for better real-time performance
 
 vehicle_detector:
   model_path: "data/models/best(8).pt"
@@ -43,7 +43,7 @@ vehicle_tracker:
 loguru:
   # Log level (can be overridden by LOG_LEVEL environment variable)
   # Options: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL
-  level: "DEBUG"
+  level: "TRACE"
 
   # Log format (can be overridden by LOG_FORMAT=json environment variable for structured logging)
   format: "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{process.name: <15}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
@@ -73,7 +73,7 @@ lp_detector:
   conf_threshold: 0.65
 
 ocr_reader:
-  backend: "fast_plate_ocr" # or "paddleocr"
+  backend: "paddleocr" # or "paddleocr"
   lang: "en" # Language code for PaddleOCR backend
   use_gpu: false # Whether to enable GPU for PaddleOCR backend
   hub_model_name: "global-plates-mobile-vit-v2-model"
@@ -100,9 +100,13 @@ visualizer:
   counting_line_color: [0, 255, 255] # Yellow in BGR format
   counting_line_thickness: 3
 
-  save_to_file: true
+  save_to_file: false
   save_path: "data/videos/output/"
   output_fourcc: "mp4v"
+
+  # Queue management mode is automatically determined based on save_to_file:
+  # - save_to_file: false -> real-time mode (small queues, drop old frames for low latency)
+  # - save_to_file: true  -> offline mode (large/unbounded queues, preserve all frames)
 
   # Modern, visually distinct color palette (BGR format for OpenCV)
   class_colors:

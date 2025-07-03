@@ -10,6 +10,7 @@ from ..utils.custom_types import FrameMessage, VehicleDetectionMessage, Detectio
 from pathlib import Path
 from typing import Any, Dict, List
 from ..utils.logging_config import setup_logging
+from ..utils.queue_utils import safe_put, log_queue_stats
 
 
 class VehicleTracker:
@@ -118,6 +119,8 @@ def vehicle_tracker_process(config: Dict[str, Any], input_queue: Queue, output_q
     """
     setup_logging(config.get("loguru")) # Initialize logging for this process
     process_name = mp.current_process().name
+    offline_mode = config.get("offline_mode", False)
+    service_name = config.get("service_name", "VehicleTracker")
     logger.info(f"Vehicle Tracker process {process_name} started")
 
     try:
@@ -183,31 +186,26 @@ def vehicle_tracker_process(config: Dict[str, Any], input_queue: Queue, output_q
                                          for class_name, count in class_tracks.items()])
                 logger.debug(f"Tracking {len(tracked_objects)} objects in frame {frame_id}: {class_summary}")
 
-            # Put the tracked vehicle message into the output queue (real-time behavior)
-            try:
-                # Drop old frame if queue is full, then put new tracking result
-                try:
-                    output_queue.get_nowait()  # Remove old tracking if queue is full
-                except Empty:
-                    pass  # Queue was empty, which is fine
-                
-                output_message = TrackedVehicleMessage(
-                    frame_id=vehicle_detection_message["frame_id"],
-                    camera_id=vehicle_detection_message["camera_id"],
-                    timestamp=vehicle_detection_message["timestamp"],
-                    frame_data_jpeg=jpeg_binary,
-                    frame_height=vehicle_detection_message["frame_height"],
-                    frame_width=vehicle_detection_message["frame_width"],
-                    og_frame_height=vehicle_detection_message["og_frame_height"],
-                    og_frame_width=vehicle_detection_message["og_frame_width"],
-                    og_fps=vehicle_detection_message["og_fps"],
-                    tracked_objects=tracked_objects
-                )
-                output_queue.put_nowait(output_message)  # Put new tracking without blocking
+            # Create the output message
+            output_message = TrackedVehicleMessage(
+                frame_id=vehicle_detection_message["frame_id"],
+                camera_id=vehicle_detection_message["camera_id"],
+                timestamp=vehicle_detection_message["timestamp"],
+                frame_data_jpeg=jpeg_binary,
+                frame_height=vehicle_detection_message["frame_height"],
+                frame_width=vehicle_detection_message["frame_width"],
+                og_frame_height=vehicle_detection_message["og_frame_height"],
+                og_frame_width=vehicle_detection_message["og_frame_width"],
+                og_fps=vehicle_detection_message["og_fps"],
+                tracked_objects=tracked_objects
+            )
+            
+            # Use mode-aware queue operation
+            success = safe_put(output_queue, output_message, offline_mode, service_name)
+            if success:
                 logger.trace(f"Queued tracking results for frame {frame_id}")
-            except Full:
-                # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
-                logger.warning(f"Output queue full. Dropping tracking for frame {frame_id}")
+            else:
+                logger.warning(f"[{service_name}] Failed to put tracking for frame {frame_id}")
                 continue
             
     except Exception as e:

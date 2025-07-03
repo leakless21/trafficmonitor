@@ -11,6 +11,7 @@ from ..utils.custom_types import TrackedVehicleMessage, VehicleCountMessage
 from ..utils.utils import relative_to_absolute_coords
 from ..utils.logging_config import setup_logging
 from ..utils.minidb import configure_database, write_vehicle_count
+from ..utils.queue_utils import safe_put, log_queue_stats
 
 class Counter:
     def __init__(self, counting_lines_config: list):
@@ -108,6 +109,8 @@ def vehicle_counter_process(config: dict, input_queue: Queue, output_queue: Queu
     # Configure database for this subprocess
     configure_database(config)
     process_name = mp.current_process().name
+    offline_mode = config.get("offline_mode", False)
+    service_name = config.get("service_name", "VehicleCounter")
     logger.info(f"[VehicleCounter] Process {process_name} started")
     try:
         counting_line_coords_list = config.get("counting_lines", [])
@@ -151,14 +154,9 @@ def vehicle_counter_process(config: dict, input_queue: Queue, output_queue: Queu
                 class_counts = count_update_message["class_counts"]
                 logger.info(f"[VehicleCounter] Total count: {total_count}, Count by class: {class_counts}")
                 
-                # Real-time behavior: drop old count if queue is full
-                try:
-                    try:
-                        output_queue.get_nowait()  # Remove old count if queue is full
-                    except Empty:
-                        pass  # Queue was empty, which is fine
-                    
-                    output_queue.put_nowait(count_update_message)  # Put new count without blocking
+                # Use mode-aware queue operation
+                success = safe_put(output_queue, count_update_message, offline_mode, service_name)
+                if success:
                     # Persist to database
                     try:
                         write_vehicle_count(
@@ -169,11 +167,8 @@ def vehicle_counter_process(config: dict, input_queue: Queue, output_queue: Queu
                         )
                     except Exception as db_exc:
                         logger.exception(f"[VehicleCounter] Failed to write vehicle count to database: {db_exc}")
-                except Full:
-                    # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
-                    logger.warning("[VehicleCounter] Output queue is full, dropping count message")
-                except Exception as e:
-                    logger.exception(f"[VehicleCounter] Error putting count message on output queue: {e}")
+                else:
+                    logger.warning(f"[{service_name}] Failed to put count message")
             else:
                 logger.debug("[VehicleCounter] No count update")
     except Exception as e:

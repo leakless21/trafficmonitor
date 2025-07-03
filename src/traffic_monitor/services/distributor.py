@@ -4,8 +4,10 @@ from multiprocessing.queues import Queue
 from queue import Empty, Full
 from typing import List
 from loguru import logger
+from ..utils.queue_utils import safe_put
 
 def distributor_process(
+    offline_mode: bool,
     input_queue: Queue,
     output_queues: List[Queue], # It takes a LIST of output queues
     shutdown_event: Event
@@ -27,19 +29,11 @@ def distributor_process(
                     q.put(None)
                 break
 
-            # For each output queue, drop old message if full and put new message (real-time behavior)
-            for q in output_queues:
-                try:
-                    # Drop old message if queue is full, then put new message
-                    try:
-                        q.get_nowait()  # Remove old message if queue is full
-                    except Empty:
-                        pass  # Queue was empty, which is fine
-                    
-                    q.put_nowait(message)  # Put new message without blocking
-                except Full:
-                    # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
-                    logger.warning(f"[{process_name}] An output queue is full. Message may be dropped for that branch.")
+            # Distribute message to all output queues using mode-aware operations
+            for i, q in enumerate(output_queues):
+                success = safe_put(q, message, offline_mode, f"{process_name}-Branch{i}")
+                if not success:
+                    logger.warning(f"[{process_name}] Failed to put message to output queue {i}")
     
     except Exception:
         logger.exception(f"[{process_name}] An unhandled error occurred.")

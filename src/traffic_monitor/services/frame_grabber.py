@@ -9,6 +9,7 @@ from queue import Full, Empty
 from multiprocessing.queues import Queue
 from multiprocessing.synchronize import Event
 from ..utils.logging_config import setup_logging
+from ..utils.queue_utils import safe_put, log_queue_stats
 
 def frame_grabber_process(
     config: Dict[str, Any],
@@ -32,6 +33,8 @@ def frame_grabber_process(
     setup_logging(config.get("loguru"))
     
     process_name = mp.current_process().name
+    offline_mode = config.get("offline_mode", False)
+    service_name = config.get("service_name", "FrameGrabber")
     
     video_source = config.get("video_source")
     if not video_source:
@@ -110,25 +113,21 @@ def frame_grabber_process(
                 "source": video_source # Original video source identifier
             }
             
-            try:
-                # Drop old frame if queue is full, then put the new frame (non-blocking real-time behavior)
-                try:
-                    output_queue.get_nowait()  # Remove old frame if queue is full
-                except Empty:
-                    pass  # Queue was empty, which is fine
-                
-                output_queue.put_nowait(message)  # Put new frame without blocking
-                
+            # Use mode-aware queue operation
+            processed_frame_count = (frame_counter - 1) // process_every_n_frame + 1
+            success = safe_put(output_queue, message, offline_mode, service_name)
+            
+            if success:
                 # Log frame processing status periodically
-                if (frame_counter - 1) // process_every_n_frame % log_every_n_frames == 0:
+                if processed_frame_count % log_every_n_frames == 0:
                     elapsed_time = current_time - last_frame_time
                     # Calculate actual_fps based on processed frames, not read frames
                     actual_fps = (log_every_n_frames * process_every_n_frame) / elapsed_time if elapsed_time > 0 else 0
-                    logger.debug(f"Processed {(frame_counter - 1) // process_every_n_frame + 1} frames. Queue size: {output_queue.qsize()}. FPS: {actual_fps:.1f}")
+                    logger.debug(f"[{service_name}] Processed {processed_frame_count} frames. FPS: {actual_fps:.1f}")
+                    log_queue_stats(output_queue, service_name, processed_frame_count)
                     last_frame_time = current_time
-            except Full:
-                # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
-                logger.warning(f"Output queue full. Frame dropped.")
+            else:
+                logger.warning(f"[{service_name}] Failed to put frame {processed_frame_count}")
                 continue
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received. Shutting down.")

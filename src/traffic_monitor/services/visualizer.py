@@ -172,12 +172,6 @@ class Visualizer:
         frame = cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8), cv2.IMREAD_COLOR)
         current_time = time.time()
         
-        # Check frame age for real-time behavior - drop frames older than 1 second
-        frame_age = current_time - frame_msg["timestamp"]
-        if frame_age > 1.0:  # Drop frames older than 1 second
-            logger.trace(f"Dropping old frame {frame_msg['frame_id']} (age: {frame_age:.2f}s)")
-            return frame  # Return frame anyway but log the drop
-        
         self.fps_calculator.append(current_time)
 
         # Initialize video timing on first frame

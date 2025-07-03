@@ -11,6 +11,7 @@ import numpy as np
 from loguru import logger
 
 from ..utils.custom_types import FrameMessage, PlateDetectionMessage, TrackedVehicleMessage
+from ..utils.queue_utils import safe_put, log_queue_stats
 
 class LPDetector:
     """
@@ -57,6 +58,8 @@ def lp_detector_process(
     setup_logging()  # Setup logging for this process
     
     process_name = mp.current_process().name
+    offline_mode = config.get("offline_mode", False)
+    service_name = config.get("service_name", "LPDetector")
     logger.info(f"[LPDetectorProcess] Starting process {process_name}")
 
     lp_detector: LPDetector | None = None
@@ -144,19 +147,11 @@ def lp_detector_process(
                     }
 
                     logger.debug(f"[LPDetectorProcess] Found plate for vehicle {vehicle['track_id']} with confidence {lp_confidence:.2f}")
-                    try:
-                        # Drop old message if queue is full, then put new plate detection (real-time behavior)
-                        try:
-                            output_queue.get_nowait()  # Remove old plate detection if queue is full
-                        except Empty:
-                            pass  # Queue was empty, which is fine
-                        
-                        output_queue.put_nowait(plate_message)  # Put new plate detection without blocking
-                    except Full:
-                        # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
-                        logger.warning(f"[LPDetectorProcess] Output queue is full, dropping plate message for vehicle {vehicle['track_id']}")
-                    except Exception as e:
-                        logger.exception(f"[LPDetectorProcess] Error putting plate message on output queue: {e}")
+                    
+                    # Use mode-aware queue operation
+                    success = safe_put(output_queue, plate_message, offline_mode, service_name)
+                    if not success:
+                        logger.warning(f"[{service_name}] Failed to put plate message for vehicle {vehicle['track_id']}")
                 else:
                     logger.debug(f"[LPDetectorProcess] No plate found for vehicle {vehicle['track_id']}")
 

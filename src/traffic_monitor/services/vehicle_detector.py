@@ -12,6 +12,7 @@ import time
 
 from ..utils.custom_types import FrameMessage, VehicleDetectionMessage, Detection
 from ..utils.logging_config import setup_logging
+from ..utils.queue_utils import safe_put, log_queue_stats
 
 class VehicleDetector:
     """
@@ -108,6 +109,8 @@ def vehicle_detector_process(
     """
     setup_logging(config.get("loguru")) # Initialize logging for this process
     process_name = mp.current_process().name
+    offline_mode = config.get("offline_mode", False)
+    service_name = config.get("service_name", "VehicleDetector")
     logger.info(f"[{process_name}] Vehicle Detector process started.")
 
     try:
@@ -180,18 +183,10 @@ def vehicle_detector_process(
                     "detections": detections
                 }
                 
-                # Attempt to put the processed message into the output queue (real-time behavior)
-                try:
-                    # Drop old frame if queue is full, then put new result
-                    try:
-                        output_queue.get_nowait()  # Remove old detection if queue is full
-                    except Empty:
-                        pass  # Queue was empty, which is fine
-                    
-                    output_queue.put_nowait(output_message)  # Put new detection without blocking
-                except Full:
-                    # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
-                    logger.warning(f"[{process_name}] Output queue is full. Dropping frame {frame_message['frame_id']}.")
+                # Use mode-aware queue operation
+                success = safe_put(output_queue, output_message, offline_mode, service_name)
+                if not success:
+                    logger.warning(f"[{service_name}] Failed to put detection for frame {frame_message['frame_id']}")
                     continue
                 
             except Empty:

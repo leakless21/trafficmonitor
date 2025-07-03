@@ -18,6 +18,7 @@ except ImportError:  # pragma: no cover
 
 from ..utils.custom_types import PlateDetectionMessage, OCRResultMessage
 from ..utils.minidb import configure_database, write_plate_result
+from ..utils.queue_utils import safe_put, log_queue_stats
 
 class OCRReader:
     def __init__(self, config: Dict[str, Any]):
@@ -52,12 +53,15 @@ class OCRReader:
                 # Initialize PaddleOCR with v5 API (device parameter instead of use_gpu)
                 self.reader = PaddleOCR(
                     use_doc_orientation_classify=False,
-                    use_doc_unwarping=True,
-                    use_textline_orientation=False,
+                    use_doc_unwarping=False,
+                    use_textline_orientation=True,
                     lang=lang,
                     device=device,
-                    text_detection_model_name="PP-OCRv4_mobile_det",
-                    text_recognition_model_name="en_PP-OCRv4_mobile_rec",
+                    text_detection_model_name="PP-OCRv5_mobile_det",
+                    text_recognition_model_name="PP-OCRv5_mobile_rec",
+                    text_det_thresh=0.3,  # Lower threshold for text detection (default: 0.3)
+                    text_det_box_thresh=0.5,  # Box threshold for text detection (default: 0.6)
+                    text_det_unclip_ratio=1.6  # Unclip ratio for text boxes (default: 1.5)
                 )
                 logger.info(f"[OCRReader] PaddleOCR initialized with language: {lang} | Device: {device}")
             except Exception as e:
@@ -118,7 +122,7 @@ class OCRReader:
 
         cleaned_results: list[Tuple[str, float]] = []
         for text, conf in zip(rec_texts, rec_scores):
-            # ensure numeric confidence (could be list for each char)
+            # Ensure numeric confidence (could be list for each char in some versions)
             if isinstance(conf, (list, tuple, np.ndarray)):
                 conf_value = float(np.mean(conf)) if len(conf) else 0.0
             else:
@@ -132,8 +136,21 @@ class OCRReader:
         if not cleaned_results:
             return None
 
-        # Select best candidate: longest text then highest confidence
-        best_text, best_conf = max(cleaned_results, key=lambda x: (len(x[0]), x[1]))
+        # If only one high-confidence text line, return it directly
+        if len(cleaned_results) == 1:
+            return cleaned_results[0]
+
+        # Handle multi-line license plates (e.g., two-line plates):
+        # Concatenate all detected text segments preserving OCR reading order.
+        combined_text: str = "".join(text for text, _ in cleaned_results)
+        combined_conf: float = float(np.mean([conf for _, conf in cleaned_results]))
+
+        # If the combined text meets basic length and confidence requirements, use it.
+        if len(combined_text) >= 3 and combined_conf >= self.conf_threshold:
+            return combined_text, combined_conf
+
+        # Fallback to previous behaviour: choose the longest single line.
+        best_text, best_conf = max(cleaned_results, key=lambda x: len(x[0]))
         return best_text, best_conf
 
     def read_plate(self, plate_image: np.ndarray) -> Tuple[str, float] | None:
@@ -153,6 +170,8 @@ def ocr_reader_process(config: Dict[str, Any], lp_detector_output_queue: Queue, 
     configure_database(config)
     
     process_name = mp.current_process().name
+    offline_mode = config.get("offline_mode", False)
+    service_name = config.get("service_name", "OCRReader")
     logger.info(f"[OCRReader] Process {process_name} started")
     try:
         ocr_reader = OCRReader(config)
@@ -185,19 +204,10 @@ def ocr_reader_process(config: Dict[str, Any], lp_detector_output_queue: Queue, 
                     "ocr_confidence": ocr_confidence,
                 }
                 
-                # Real-time behavior: drop old OCR result if queue is full
-                try:
-                    try:
-                        ocr_reader_output_queue.get_nowait()  # Remove old OCR result if queue is full
-                    except Empty:
-                        pass  # Queue was empty, which is fine
-                    
-                    ocr_reader_output_queue.put_nowait(ocr_result_message)  # Put new OCR result without blocking
-                except Full:
-                    # This should never happen with get_nowait() + put_nowait() pattern, but keep for safety
-                    logger.warning(f"[OCRReader] Output queue is full, dropping OCR result for vehicle {lp_message['vehicle_id']}")
-                except Exception as e:
-                    logger.exception(f"[OCRReader] Error putting OCR result on output queue: {e}")
+                # Use mode-aware queue operation
+                success = safe_put(ocr_reader_output_queue, ocr_result_message, offline_mode, service_name)
+                if not success:
+                    logger.warning(f"[{service_name}] Failed to put OCR result for vehicle {lp_message['vehicle_id']}")
                 
                 vehicle_class = lp_message.get('vehicle_class', 'unknown')
                 logger.info(f"[OCRReader] Detected plate '{lp_text}' for {vehicle_class} (ID: {lp_message['vehicle_id']}) with confidence {ocr_confidence:.3f}")
@@ -206,6 +216,7 @@ def ocr_reader_process(config: Dict[str, Any], lp_detector_output_queue: Queue, 
                     write_plate_result(
                         camera_id=lp_message['camera_id'],
                         vehicle_id=lp_message['vehicle_id'],
+                        vehicle_class=vehicle_class,
                         lp_text=lp_text,
                         ocr_conf=ocr_confidence,
                         ts=int(lp_message['timestamp'] * 1000)
