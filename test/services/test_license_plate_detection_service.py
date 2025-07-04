@@ -6,7 +6,7 @@ from queue import Empty, Full
 from loguru import logger
 import cv2
 
-from src.traffic_monitor.services.lp_detector import LPDetector, lp_detector_process
+from src.traffic_monitor.services.license_plate_detection_service import LicensePlateDetectionService, license_plate_detection_process
 from src.traffic_monitor.utils.logging_config import setup_logging
 
 # Initialize logging for the test environment
@@ -14,7 +14,7 @@ setup_logging()
 
 @pytest.fixture
 def mock_lp_detector_config():
-    """Provides a mock configuration dictionary for LPDetector tests."""
+    """Provides a mock configuration dictionary for LicensePlateDetectionService tests."""
     return {
         "lp_detector": {
             "model_path": "data/models/plate_v8n.pt",
@@ -115,11 +115,11 @@ class MockYOLOModel:
 @patch('ultralytics.YOLO', new=MockYOLOModel)
 def test_lp_detector_init_success(mock_lp_detector_config):
     """
-    Tests successful initialization of LPDetector.
+    Tests successful initialization of LicensePlateDetectionService.
     """
     logger.info("Running test_lp_detector_init_success")
     with patch('os.path.exists', return_value=True):
-        detector = LPDetector(mock_lp_detector_config["lp_detector"]["model_path"],
+        detector = LicensePlateDetectionService(mock_lp_detector_config["lp_detector"]["model_path"],
                               mock_lp_detector_config["lp_detector"]["conf_threshold"])
         assert detector is not None
         assert detector.conf_threshold == 0.6
@@ -128,11 +128,11 @@ def test_lp_detector_init_success(mock_lp_detector_config):
 @patch('ultralytics.YOLO', side_effect=Exception("Model load error"))
 def test_lp_detector_init_failure(mock_yolo_model, mock_lp_detector_config):
     """
-    Tests LPDetector initialization failure (e.g., model not found/corrupted).
+    Tests LicensePlateDetectionService initialization failure (e.g., model not found/corrupted).
     """
     logger.info("Running test_lp_detector_init_failure")
     with pytest.raises(Exception, match="Model load error"):
-        LPDetector(mock_lp_detector_config["lp_detector"]["model_path"],
+        LicensePlateDetectionService(mock_lp_detector_config["lp_detector"]["model_path"],
                    mock_lp_detector_config["lp_detector"]["conf_threshold"])
     logger.info("Finished test_lp_detector_init_failure")
 
@@ -143,7 +143,7 @@ def test_lp_detector_find_plates_success(mock_lp_detector_config):
     """
     logger.info("Running test_lp_detector_find_plates_success")
     with patch('os.path.exists', return_value=True):
-        detector = LPDetector(mock_lp_detector_config["lp_detector"]["model_path"],
+        detector = LicensePlateDetectionService(mock_lp_detector_config["lp_detector"]["model_path"],
                               mock_lp_detector_config["lp_detector"]["conf_threshold"])
         
         # Create a dummy frame to simulate a vehicle crop
@@ -163,7 +163,7 @@ def test_lp_detector_find_plates_no_detection(mock_lp_detector_config):
     """
     logger.info("Running test_lp_detector_find_plates_no_detection")
     with patch('os.path.exists', return_value=True):
-        detector = LPDetector(mock_lp_detector_config["lp_detector"]["model_path"],
+        detector = LicensePlateDetectionService(mock_lp_detector_config["lp_detector"]["model_path"],
                               mock_lp_detector_config["lp_detector"]["conf_threshold"])
         
         # Create a dummy frame that won't trigger a detection in MockYOLOModel
@@ -173,12 +173,12 @@ def test_lp_detector_find_plates_no_detection(mock_lp_detector_config):
         assert result is None
     logger.info("Finished test_lp_detector_find_plates_no_detection")
 
-# --- Tests for lp_detector_process ---
+# --- Tests for license_plate_detection_process ---
 
 @patch('os.path.exists', return_value=True)
 @patch('ultralytics.YOLO', new=MockYOLOModel)
 @patch('cv2.imdecode', return_value=np.zeros((100, 100, 3), dtype=np.uint8))
-def test_lp_detector_process_basic_flow(
+def test_license_plate_detection_process_basic_flow(
     mock_imdecode,
     mock_yolo_model,
     mock_path_exists,
@@ -189,9 +189,9 @@ def test_lp_detector_process_basic_flow(
     sample_frame_message
 ):
     """
-    Tests the basic flow of lp_detector_process with successful detections.
+    Tests the basic flow of license_plate_detection_process with successful detections.
     """
-    logger.info("Running test_lp_detector_process_basic_flow")
+    logger.info("Running test_license_plate_detection_process_basic_flow")
     
     # Simulate input queue providing messages then None for shutdown
     mock_input_queue.get.side_effect = [
@@ -201,7 +201,7 @@ def test_lp_detector_process_basic_flow(
     mock_shutdown_event.is_set.side_effect = [False, False, True] # Allow processing, then shut down
 
     process = mp.Process(
-        target=lp_detector_process,
+        target=license_plate_detection_process,
         args=(mock_lp_detector_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     )
     process.start()
@@ -236,11 +236,11 @@ def test_lp_detector_process_basic_flow(
     assert len(mock_output_queue.put.call_args_list) >= 3 # Ensure at least three calls
     assert mock_output_queue.put.call_args_list[2][0][0] is None
 
-    logger.info("Finished test_lp_detector_process_basic_flow")
+    logger.info("Finished test_license_plate_detection_process_basic_flow")
 
 @patch('os.path.exists', return_value=False)
 @patch('ultralytics.YOLO', new=MockYOLOModel)
-def test_lp_detector_process_model_not_found(
+def test_license_plate_detection_process_model_not_found(
     mock_yolo_model,
     mock_path_exists,
     mock_lp_detector_config,
@@ -249,12 +249,12 @@ def test_lp_detector_process_model_not_found(
     mock_shutdown_event
 ):
     """
-    Tests lp_detector_process when the model file is not found.
+    Tests license_plate_detection_process when the model file is not found.
     """
-    logger.info("Running test_lp_detector_process_model_not_found")
+    logger.info("Running test_license_plate_detection_process_model_not_found")
 
     process = mp.Process(
-        target=lp_detector_process,
+        target=license_plate_detection_process,
         args=(mock_lp_detector_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     )
     process.start()
@@ -264,11 +264,11 @@ def test_lp_detector_process_model_not_found(
     mock_yolo_model.assert_not_called() # YOLO should not be initialized
     mock_input_queue.get.assert_not_called() # No messages should be processed
     mock_output_queue.put.assert_called_once_with(None) # Should signal shutdown
-    logger.info("Finished test_lp_detector_process_model_not_found")
+    logger.info("Finished test_license_plate_detection_process_model_not_found")
 
 @patch('os.path.exists', return_value=True)
 @patch('ultralytics.YOLO', side_effect=Exception("YOLO init error"))
-def test_lp_detector_process_init_failure(
+def test_license_plate_detection_process_init_failure(
     mock_yolo_model,
     mock_path_exists,
     mock_lp_detector_config,
@@ -277,12 +277,12 @@ def test_lp_detector_process_init_failure(
     mock_shutdown_event
 ):
     """
-    Tests lp_detector_process when LPDetector initialization fails.
+    Tests license_plate_detection_process when LicensePlateDetectionService initialization fails.
     """
-    logger.info("Running test_lp_detector_process_init_failure")
+    logger.info("Running test_license_plate_detection_process_init_failure")
 
     process = mp.Process(
-        target=lp_detector_process,
+        target=license_plate_detection_process,
         args=(mock_lp_detector_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     )
     process.start()
@@ -292,12 +292,12 @@ def test_lp_detector_process_init_failure(
     mock_yolo_model.assert_called_once() # YOLO should be attempted to be initialized
     mock_input_queue.get.assert_not_called() # No messages should be processed
     mock_output_queue.put.assert_called_once_with(None) # Should signal shutdown
-    logger.info("Finished test_lp_detector_process_init_failure")
+    logger.info("Finished test_license_plate_detection_process_init_failure")
 
 @patch('os.path.exists', return_value=True)
 @patch('ultralytics.YOLO', new=MockYOLOModel)
 @patch('cv2.imdecode', return_value=np.zeros((100, 100, 3), dtype=np.uint8))
-def test_lp_detector_process_empty_input_queue(
+def test_license_plate_detection_process_empty_input_queue(
     mock_imdecode,
     mock_yolo_model,
     mock_path_exists,
@@ -307,15 +307,15 @@ def test_lp_detector_process_empty_input_queue(
     mock_shutdown_event
 ):
     """
-    Tests lp_detector_process when the input queue is empty and then shuts down.
+    Tests license_plate_detection_process when the input queue is empty and then shuts down.
     """
-    logger.info("Running test_lp_detector_process_empty_input_queue")
+    logger.info("Running test_license_plate_detection_process_empty_input_queue")
 
     mock_input_queue.get.side_effect = Empty # Simulate empty queue
     mock_shutdown_event.is_set.side_effect = [False, True] # Allow one loop, then shut down
 
     process = mp.Process(
-        target=lp_detector_process,
+        target=license_plate_detection_process,
         args=(mock_lp_detector_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     )
     process.start()
@@ -323,12 +323,12 @@ def test_lp_detector_process_empty_input_queue(
 
     mock_input_queue.get.assert_called() # Should attempt to get from queue
     mock_output_queue.put.assert_called_once_with(None) # Should signal shutdown
-    logger.info("Finished test_lp_detector_process_empty_input_queue")
+    logger.info("Finished test_license_plate_detection_process_empty_input_queue")
 
 @patch('os.path.exists', return_value=True)
 @patch('ultralytics.YOLO', new=MockYOLOModel)
 @patch('cv2.imdecode', return_value=np.zeros((100, 100, 3), dtype=np.uint8))
-def test_lp_detector_process_output_queue_full(
+def test_license_plate_detection_process_output_queue_full(
     mock_imdecode,
     mock_yolo_model,
     mock_path_exists,
@@ -339,9 +339,9 @@ def test_lp_detector_process_output_queue_full(
     sample_frame_message
 ):
     """
-    Tests lp_detector_process when the output queue is full.
+    Tests license_plate_detection_process when the output queue is full.
     """
-    logger.info("Running test_lp_detector_process_output_queue_full")
+    logger.info("Running test_license_plate_detection_process_output_queue_full")
 
     mock_input_queue.get.side_effect = [
         sample_frame_message, # First message to process
@@ -353,7 +353,7 @@ def test_lp_detector_process_output_queue_full(
     mock_shutdown_event.is_set.side_effect = [False, False, True] # Allow processing, then shut down
 
     process = mp.Process(
-        target=lp_detector_process,
+        target=license_plate_detection_process,
         args=(mock_lp_detector_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     )
     process.start()
@@ -364,12 +364,12 @@ def test_lp_detector_process_output_queue_full(
 
     # Check that the None signal for shutdown is still sent
     assert mock_output_queue.put.call_args_list[2][0][0] is None
-    logger.info("Finished test_lp_detector_process_output_queue_full")
+    logger.info("Finished test_license_plate_detection_process_output_queue_full")
 
 @patch('os.path.exists', return_value=True)
 @patch('ultralytics.YOLO', new=MockYOLOModel)
 @patch('cv2.imdecode', return_value=np.zeros((100, 100, 3), dtype=np.uint8))
-def test_lp_detector_process_invalid_bbox(
+def test_license_plate_detection_process_invalid_bbox(
     mock_imdecode,
     mock_yolo_model,
     mock_path_exists,
@@ -380,9 +380,9 @@ def test_lp_detector_process_invalid_bbox(
     sample_frame_message
 ):
     """
-    Tests lp_detector_process with invalid bounding box coordinates.
+    Tests license_plate_detection_process with invalid bounding box coordinates.
     """
-    logger.info("Running test_lp_detector_process_invalid_bbox")
+    logger.info("Running test_license_plate_detection_process_invalid_bbox")
 
     # Create a message with an invalid bbox (x1 >= x2)
     invalid_bbox_message = sample_frame_message.copy()
@@ -402,7 +402,7 @@ def test_lp_detector_process_invalid_bbox(
     mock_shutdown_event.is_set.side_effect = [False, False, True] # Allow processing, then shut down
 
     process = mp.Process(
-        target=lp_detector_process,
+        target=license_plate_detection_process,
         args=(mock_lp_detector_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     )
     process.start()
@@ -410,4 +410,4 @@ def test_lp_detector_process_invalid_bbox(
 
     # No plate detection messages should be put, only the shutdown None
     mock_output_queue.put.assert_called_once_with(None)
-    logger.info("Finished test_lp_detector_process_invalid_bbox") 
+    logger.info("Finished test_license_plate_detection_process_invalid_bbox") 

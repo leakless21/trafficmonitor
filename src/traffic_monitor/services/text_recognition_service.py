@@ -20,7 +20,7 @@ from ..utils.custom_types import PlateDetectionMessage, OCRResultMessage
 from ..utils.minidb import configure_database, write_plate_result
 from ..utils.queue_utils import safe_put, log_queue_stats
 
-class OCRReader:
+class TextRecognitionService:
     def __init__(self, config: Dict[str, Any]):
         self.backend: str = config.get("backend", "fast_plate_ocr").lower()
         self.conf_threshold = config.get("conf_threshold", 0.5)
@@ -162,7 +162,7 @@ class OCRReader:
             logger.error(f"Unsupported backend during inference: {self.backend}")
             return None
     
-def ocr_reader_process(config: Dict[str, Any], lp_detector_output_queue: Queue, ocr_reader_output_queue: Queue, shutdown_event: Event):
+def text_recognition_process(config: Dict[str, Any], lp_detector_output_queue: Queue, ocr_reader_output_queue: Queue, shutdown_event: Event):
     from ..utils.logging_config import setup_logging
     setup_logging()  # Setup logging for this process
     
@@ -171,10 +171,10 @@ def ocr_reader_process(config: Dict[str, Any], lp_detector_output_queue: Queue, 
     
     process_name = mp.current_process().name
     offline_mode = config.get("offline_mode", False)
-    service_name = config.get("service_name", "OCRReader")
-    logger.info(f"[OCRReader] Process {process_name} started")
+    service_name = config.get("service_name", "TextRecognitionService")
+    logger.info(f"[TextRecognitionService] Process {process_name} started")
     try:
-        ocr_reader = OCRReader(config)
+        ocr_reader = TextRecognitionService(config)
         while not shutdown_event.is_set():
             try:
                 lp_message: PlateDetectionMessage = lp_detector_output_queue.get(timeout=1)

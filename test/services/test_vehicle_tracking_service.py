@@ -9,7 +9,7 @@ from pathlib import Path
 import time
 from typing import List, cast
 
-from src.traffic_monitor.services.vehicle_tracker import VehicleTracker, vehicle_tracker_process
+from src.traffic_monitor.services.vehicle_tracking_service import VehicleTrackingService, vehicle_tracking_process
 from src.traffic_monitor.utils.logging_config import setup_logging
 from src.traffic_monitor.utils.custom_types import FrameMessage, VehicleDetectionMessage, TrackedVehicleMessage, Detection, TrackedObject
 
@@ -18,7 +18,7 @@ setup_logging()
 
 @pytest.fixture
 def mock_tracker_config():
-    """Provides a mock configuration dictionary for VehicleTracker tests."""
+    """Provides a mock configuration dictionary for VehicleTrackingService tests."""
     return {
         "tracker_type": "bytetrack",
         "reid_model_path": "data/models/reid.pt",
@@ -99,11 +99,11 @@ class MockTrackerInstance:
 @patch('src.traffic_monitor.services.vehicle_tracker.create_tracker')
 def test_vehicle_tracker_init_success(mock_create_tracker, mock_tracker_config):
     """
-    Tests successful initialization of VehicleTracker.
+    Tests successful initialization of VehicleTrackingService.
     """
     logger.info("Running test_vehicle_tracker_init_success")
     mock_create_tracker.return_value = MockTrackerInstance()
-    tracker = VehicleTracker(
+    tracker = VehicleTrackingService(
         tracker_type=mock_tracker_config["tracker_type"],
         reid_model_path=Path(mock_tracker_config["reid_model_path"]),
         device=mock_tracker_config["device"],
@@ -118,11 +118,11 @@ def test_vehicle_tracker_init_success(mock_create_tracker, mock_tracker_config):
 @patch('src.traffic_monitor.services.vehicle_tracker.create_tracker', side_effect=Exception("Tracker creation error"))
 def test_vehicle_tracker_init_failure(mock_create_tracker, mock_tracker_config):
     """
-    Tests VehicleTracker initialization failure.
+    Tests VehicleTrackingService initialization failure.
     """
     logger.info("Running test_vehicle_tracker_init_failure")
     with pytest.raises(Exception, match="Tracker creation error"):
-        VehicleTracker(
+        VehicleTrackingService(
             tracker_type=mock_tracker_config["tracker_type"],
             reid_model_path=Path(mock_tracker_config["reid_model_path"]),
             device=mock_tracker_config["device"],
@@ -139,7 +139,7 @@ def test_vehicle_tracker_detections_to_numpy(mock_create_tracker):
     """
     logger.info("Running test_vehicle_tracker_detections_to_numpy")
     mock_create_tracker.return_value = MockTrackerInstance()
-    tracker = VehicleTracker("bytetrack", Path("data/models/reid.pt"), "cpu", False, False, Path("some/path/tracker.yaml"))
+    tracker = VehicleTrackingService("bytetrack", Path("data/models/reid.pt"), "cpu", False, False, Path("some/path/tracker.yaml"))
     detections = cast(List[Detection], [
         {"bbox_xyxy": [1, 2, 3, 4], "confidence": 0.9, "class_id": 0, "class_name": "person"},
         {"bbox_xyxy": [5, 6, 7, 8], "confidence": 0.8, "class_id": 1, "class_name": "bicycle"}
@@ -160,7 +160,7 @@ def test_vehicle_tracker_tracks_to_dict(mock_create_tracker, mock_tracker_config
     """
     logger.info("Running test_vehicle_tracker_tracks_to_dict")
     mock_create_tracker.return_value = MockTrackerInstance()
-    tracker = VehicleTracker("bytetrack", Path("data/models/reid.pt"), "cpu", False, False, Path("some/path/tracker.yaml"))
+    tracker = VehicleTrackingService("bytetrack", Path("data/models/reid.pt"), "cpu", False, False, Path("some/path/tracker.yaml"))
     # [x1, y1, x2, y2, track_id, confidence, class_id, detection_index]
     tracks_numpy = np.array([
         [10, 10, 50, 50, 1, 0.95, 2, 0], # Car
@@ -179,12 +179,12 @@ def test_vehicle_tracker_tracks_to_dict(mock_create_tracker, mock_tracker_config
 @patch('src.traffic_monitor.services.vehicle_tracker.create_tracker')
 def test_vehicle_tracker_update(mock_create_tracker, mock_tracker_config):
     """
-    Tests the update method of VehicleTracker.
+    Tests the update method of VehicleTrackingService.
     """
     logger.info("Running test_vehicle_tracker_update")
     mock_tracker_instance = MockTrackerInstance()
     mock_create_tracker.return_value = mock_tracker_instance
-    tracker = VehicleTracker(
+    tracker = VehicleTrackingService(
         tracker_type=mock_tracker_config["tracker_type"],
         reid_model_path=Path(mock_tracker_config["reid_model_path"]),
         device=mock_tracker_config["device"],
@@ -204,27 +204,27 @@ def test_vehicle_tracker_update(mock_create_tracker, mock_tracker_config):
     assert tracked_objects[0]["class_name"] == "car"
     logger.info("Finished test_vehicle_tracker_update")
 
-# --- Tests for vehicle_tracker_process ---
+# --- Tests for vehicle_tracking_process ---
 
-@patch('src.traffic_monitor.services.vehicle_tracker.VehicleTracker')
+@patch('src.traffic_monitor.services.vehicle_tracker.VehicleTrackingService')
 @patch('cv2.imdecode', return_value=np.zeros((480, 640, 3), dtype=np.uint8))
-def test_vehicle_tracker_process_basic_flow(
+def test_vehicle_tracking_process_basic_flow(
     mock_imdecode,
     mock_vehicle_tracker_class,
     mock_tracker_config,
     sample_vehicle_detection_message
 ):
     """
-    Tests the basic flow of vehicle_tracker_process with successful tracking.
+    Tests the basic flow of vehicle_tracking_process with successful tracking.
     """
-    logger.info("Running test_vehicle_tracker_process_basic_flow")
+    logger.info("Running test_vehicle_tracking_process_basic_flow")
 
     # Create mock queues and event directly
     mock_input_queue = MagicMock()
     mock_output_queue = MagicMock()
     mock_shutdown_event = MagicMock()
 
-    # Setup mock VehicleTracker instance
+    # Setup mock VehicleTrackingService instance
     mock_tracker_instance = MagicMock()
     mock_vehicle_tracker_class.return_value = mock_tracker_instance
     mock_tracker_instance.update.return_value = [
@@ -240,7 +240,7 @@ def test_vehicle_tracker_process_basic_flow(
 
     # Call the function directly instead of using multiprocessing
     try:
-        vehicle_tracker_process(mock_tracker_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
+        vehicle_tracking_process(mock_tracker_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     except Exception as e:
         # Expected exception when process ends
         pass
@@ -255,17 +255,17 @@ def test_vehicle_tracker_process_basic_flow(
     if mock_output_queue.put.call_count > 0:
         output_message = mock_output_queue.put.call_args_list[0][0][0]
         assert output_message["frame_id"] == "frame_vd_1"
-    logger.info("Finished test_vehicle_tracker_process_basic_flow")
+    logger.info("Finished test_vehicle_tracking_process_basic_flow")
 
-@patch('src.traffic_monitor.services.vehicle_tracker.VehicleTracker', side_effect=Exception("Tracker init error"))
-def test_vehicle_tracker_process_init_failure(
+@patch('src.traffic_monitor.services.vehicle_tracker.VehicleTrackingService', side_effect=Exception("Tracker init error"))
+def test_vehicle_tracking_process_init_failure(
     mock_tracker_class,
     mock_tracker_config
 ):
     """
-    Tests vehicle_tracker_process initialization failure.
+    Tests vehicle_tracking_process initialization failure.
     """
-    logger.info("Running test_vehicle_tracker_process_init_failure")
+    logger.info("Running test_vehicle_tracking_process_init_failure")
     
     # Create mock queues and event directly
     mock_input_queue = MagicMock()
@@ -276,26 +276,26 @@ def test_vehicle_tracker_process_init_failure(
 
     # Call the function directly instead of using multiprocessing
     try:
-        vehicle_tracker_process(mock_tracker_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
+        vehicle_tracking_process(mock_tracker_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     except Exception:
-        # Expected exception from VehicleTracker initialization
+        # Expected exception from VehicleTrackingService initialization
         pass
 
     mock_tracker_class.assert_called_once() # Should attempt to initialize
     # When initialization fails, the process should return early
-    logger.info("Finished test_vehicle_tracker_process_init_failure")
+    logger.info("Finished test_vehicle_tracking_process_init_failure")
 
-@patch('src.traffic_monitor.services.vehicle_tracker.VehicleTracker')
+@patch('src.traffic_monitor.services.vehicle_tracker.VehicleTrackingService')
 @patch('cv2.imdecode', return_value=np.zeros((480, 640, 3), dtype=np.uint8))
-def test_vehicle_tracker_process_empty_input_queue(
+def test_vehicle_tracking_process_empty_input_queue(
     mock_imdecode,
     mock_tracker_class,
     mock_tracker_config
 ):
     """
-    Tests vehicle_tracker_process behavior with an empty input queue.
+    Tests vehicle_tracking_process behavior with an empty input queue.
     """
-    logger.info("Running test_vehicle_tracker_process_empty_input_queue")
+    logger.info("Running test_vehicle_tracking_process_empty_input_queue")
     
     # Create mock queues and event directly
     mock_input_queue = MagicMock()
@@ -310,27 +310,27 @@ def test_vehicle_tracker_process_empty_input_queue(
 
     # Call the function directly instead of using multiprocessing
     try:
-        vehicle_tracker_process(mock_tracker_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
+        vehicle_tracking_process(mock_tracker_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     except Exception:
         # Expected exception when process ends
         pass
 
     mock_input_queue.get.assert_called() # Should be called at least once
     mock_tracker_instance.update.assert_not_called() # No messages to process
-    logger.info("Finished test_vehicle_tracker_process_empty_input_queue")
+    logger.info("Finished test_vehicle_tracking_process_empty_input_queue")
 
-@patch('src.traffic_monitor.services.vehicle_tracker.VehicleTracker')
+@patch('src.traffic_monitor.services.vehicle_tracker.VehicleTrackingService')
 @patch('cv2.imdecode', return_value=np.zeros((480, 640, 3), dtype=np.uint8))
-def test_vehicle_tracker_process_output_queue_full(
+def test_vehicle_tracking_process_output_queue_full(
     mock_imdecode,
     mock_tracker_class,
     mock_tracker_config,
     sample_vehicle_detection_message
 ):
     """
-    Tests vehicle_tracker_process behavior when the output queue is full.
+    Tests vehicle_tracking_process behavior when the output queue is full.
     """
-    logger.info("Running test_vehicle_tracker_process_output_queue_full")
+    logger.info("Running test_vehicle_tracking_process_output_queue_full")
     
     # Create mock queues and event directly
     mock_input_queue = MagicMock()
@@ -352,27 +352,27 @@ def test_vehicle_tracker_process_output_queue_full(
 
     # Call the function directly instead of using multiprocessing
     try:
-        vehicle_tracker_process(mock_tracker_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
+        vehicle_tracking_process(mock_tracker_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     except Exception:
         # Expected exception when process ends
         pass
 
     mock_input_queue.get.assert_called() # Should get the message
     mock_tracker_instance.update.assert_called_once()
-    logger.info("Finished test_vehicle_tracker_process_output_queue_full")
+    logger.info("Finished test_vehicle_tracking_process_output_queue_full")
 
-@patch('src.traffic_monitor.services.vehicle_tracker.VehicleTracker')
+@patch('src.traffic_monitor.services.vehicle_tracker.VehicleTrackingService')
 @patch('cv2.imdecode', side_effect=Exception("Imdecode error"))
-def test_vehicle_tracker_process_imdecode_failure(
+def test_vehicle_tracking_process_imdecode_failure(
     mock_imdecode,
     mock_tracker_class,
     mock_tracker_config,
     sample_vehicle_detection_message
 ):
     """
-    Tests vehicle_tracker_process error handling when cv2.imdecode fails.
+    Tests vehicle_tracking_process error handling when cv2.imdecode fails.
     """
-    logger.info("Running test_vehicle_tracker_process_imdecode_failure")
+    logger.info("Running test_vehicle_tracking_process_imdecode_failure")
     
     # Create mock queues and event directly
     mock_input_queue = MagicMock()
@@ -390,7 +390,7 @@ def test_vehicle_tracker_process_imdecode_failure(
 
     # Call the function directly instead of using multiprocessing
     try:
-        vehicle_tracker_process(mock_tracker_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
+        vehicle_tracking_process(mock_tracker_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     except Exception:
         # Expected exception from cv2.imdecode failure or process shutdown
         pass
@@ -398,4 +398,4 @@ def test_vehicle_tracker_process_imdecode_failure(
     mock_imdecode.assert_called_once() # Should attempt to decode the image
     mock_tracker_instance.update.assert_not_called() # Should not proceed to update
     mock_input_queue.get.assert_called() # Should get the initial message
-    logger.info("Finished test_vehicle_tracker_process_imdecode_failure")
+    logger.info("Finished test_vehicle_tracking_process_imdecode_failure")

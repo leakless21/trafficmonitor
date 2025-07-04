@@ -13,39 +13,39 @@ from loguru import logger
 from ..utils.custom_types import FrameMessage, PlateDetectionMessage, TrackedVehicleMessage
 from ..utils.queue_utils import safe_put, log_queue_stats
 
-class LPDetector:
+class LicensePlateDetectionService:
     """
     Encapsulates the license plate detection model and its configuration.
     Handles loading the model, setting confidence thresholds, and processing detection results.
     """
     def __init__(self, model_path: str, conf_threshold: float):
         """
-        Initializes the LPDetector with the specified model and confidence threshold.
+        Initializes the LicensePlateDetectionService with the specified model and confidence threshold.
         """
-        logger.info(f"[LPDetector] Attempting to load model from {model_path}...")
+        logger.info(f"[LicensePlateDetectionService] Attempting to load model from {model_path}...")
         try:
             self.model = ultralytics.YOLO(model_path)
             self.conf_threshold = conf_threshold
-            logger.info(f"[LPDetector] Model loaded successfully from {model_path}")
+            logger.info(f"[LicensePlateDetectionService] Model loaded successfully from {model_path}")
         except Exception as e:
-            logger.exception(f"[LPDetector] Failed to load model from {model_path}: {e}")
+            logger.exception(f"[LicensePlateDetectionService] Failed to load model from {model_path}: {e}")
             raise # Re-raise the exception to propagate the error
     
     def find_plates(self, frame: np.ndarray) -> tuple[list[int], float] | None:
         """
         Finds license plates in the given frame.
         """
-        logger.info("[LPDetector] Running inference...")
+        logger.info("[LicensePlateDetectionService] Running inference...")
         results = self.model.predict(frame, conf=self.conf_threshold, verbose=False)
         if not results or not results[0].boxes:
-            logger.info("[LPDetector] No plates found.")
+            logger.info("[LicensePlateDetectionService] No plates found.")
             return None
         best_plate = results[0].boxes[0]
         bbox = best_plate.xyxy[0].tolist()
         confidence = best_plate.conf.item()
         return (bbox, confidence)
 
-def lp_detector_process(
+def license_plate_detection_process(
         config: Dict[str, Any],
         input_queue: Queue,
         output_queue: Queue,
@@ -59,10 +59,10 @@ def lp_detector_process(
     
     process_name = mp.current_process().name
     offline_mode = config.get("offline_mode", False)
-    service_name = config.get("service_name", "LPDetector")
-    logger.info(f"[LPDetectorProcess] Starting process {process_name}")
+    service_name = config.get("service_name", "LicensePlateDetectionService")
+    logger.info(f"[LicensePlateDetectionProcess] Starting process {process_name}")
 
-    lp_detector: LPDetector | None = None
+    lp_detector: LicensePlateDetectionService | None = None
     try:
         model_path = config.get("model_path", "data/models/lp.pt")
         conf_threshold = config.get("conf_threshold", 0.8)
@@ -77,9 +77,9 @@ def lp_detector_process(
             output_queue.put(None)
             return # Exit process
 
-        logger.info(f"[LPDetectorProcess] Initializing LPDetector with model_path: {model_path}, conf_threshold: {conf_threshold}")
-        lp_detector = LPDetector(model_path, conf_threshold)
-        logger.info(f"[LPDetectorProcess] LPDetector initialized successfully.")
+        logger.info(f"[LicensePlateDetectionProcess] Initializing LicensePlateDetectionService with model_path: {model_path}, conf_threshold: {conf_threshold}")
+        lp_detector = LicensePlateDetectionService(model_path, conf_threshold)
+        logger.info(f"[LicensePlateDetectionProcess] LicensePlateDetectionService initialized successfully.")
 
     except Exception as e:
         logger.exception(f"[LPDetectorProcess] Failed to initialize LPDetector: {e}")

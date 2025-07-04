@@ -15,7 +15,7 @@ from ..utils.custom_types import TrackedVehicleMessage, VehicleCountMessage, OCR
 from ..utils.utils import relative_to_absolute_coords
 from ..utils.logging_config import setup_logging
 
-class Visualizer:
+class VisualizationService:
     def __init__(self, config: dict):
         # Handle font using getattr for direct access to cv2 constants
         font_config = config.get("font", "FONT_HERSHEY_SIMPLEX")
@@ -48,9 +48,9 @@ class Visualizer:
         self.frame_count = 0
         self.video_start_time = None
         
-        logger.info(f"[Visualizer] Visualizer initialized with font: {self.font}, font scale: {self.font_scale}, font thickness: {self.font_thickness}")
-        logger.info(f"[Visualizer] Loaded {len(self.counting_lines_relative)} counting line(s) for visualization")
-        logger.debug(f"[Visualizer] Parsed colors: {self.colors}")
+        logger.info(f"[VisualizationService] Visualization service initialized with font: {self.font}, font scale: {self.font_scale}, font thickness: {self.font_thickness}")
+        logger.info(f"[VisualizationService] Loaded {len(self.counting_lines_relative)} counting line(s) for visualization")
+        logger.debug(f"[VisualizationService] Parsed colors: {self.colors}")
         self.save_to_file = config.get("save_to_file", False)
         self.video_writer: cv2.VideoWriter | None = None
 
@@ -208,11 +208,11 @@ class Visualizer:
             self.video_writer.release()
             self.video_writer = None
 
-def visualize_process(config: dict, tracking_queue: Queue, OCR_queue: Queue, vehicle_count_queue: Queue, shutdown_event: Event):
+def visualization_process(config: dict, tracking_queue: Queue, OCR_queue: Queue, vehicle_count_queue: Queue, shutdown_event: Event):
     # Setup logging for this process
     try:
         setup_logging(config.get("loguru"))
-        logger.info("Visualizer process started")
+        logger.info("VisualizationService process started")
     except Exception as e:
         print(f"Failed to setup logging: {e}")
     
@@ -234,8 +234,8 @@ def visualize_process(config: dict, tracking_queue: Queue, OCR_queue: Queue, veh
             logger.error("This might indicate a display/GUI environment issue")
             return
         
-        visualizer = Visualizer(config)
-        logger.info("Visualizer initialized successfully")
+        visualizer = VisualizationService(config)
+        logger.info("VisualizationService initialized successfully")
 
         frame_count = 0
         while not shutdown_event.is_set():

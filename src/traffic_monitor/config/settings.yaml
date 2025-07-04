@@ -73,7 +73,7 @@ lp_detector:
   conf_threshold: 0.65
 
 ocr_reader:
-  backend: "paddleocr" # or "paddleocr"
+  backend: "fast_plate_ocr" # fast_plate_ocr or "paddleocr"
   lang: "en" # Language code for PaddleOCR backend
   use_gpu: false # Whether to enable GPU for PaddleOCR backend
   hub_model_name: "global-plates-mobile-vit-v2-model"

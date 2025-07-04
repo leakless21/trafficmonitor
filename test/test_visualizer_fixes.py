@@ -3,7 +3,7 @@ Test cases for visualizer-related bug fixes.
 """
 import pytest
 from src.traffic_monitor.utils.custom_types import TrackedVehicleMessage
-from src.traffic_monitor.services.ocr_reader import OCRReader
+from src.traffic_monitor.services.text_recognition_service import TextRecognitionService
 import numpy as np
 
 
@@ -36,7 +36,7 @@ def test_ocr_confidence_threshold_allows_valid_detections():
     }
     
     # Create a mock OCR reader (without actual model initialization)
-    ocr_reader = OCRReader.__new__(OCRReader)
+    ocr_reader = TextRecognitionService.__new__(TextRecognitionService)
     ocr_reader.conf_threshold = config["conf_threshold"]
     
     # Test that confidence 0.44 would be accepted (above threshold)

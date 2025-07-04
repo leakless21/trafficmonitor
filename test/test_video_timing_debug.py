@@ -60,7 +60,7 @@ def test_video_timing_analysis():
             return np.zeros((480, 640, 3), dtype=np.uint8)
     
     # Run the system for a short time to collect timing data
-    with patch('src.traffic_monitor.services.visualizer.Visualizer.process_frame', mock_process_frame):
+    with patch('src.traffic_monitor.services.visualization_service.VisualizationService.process_frame', mock_process_frame):
         config = load_config("src/traffic_monitor/config/settings.yaml")
         if config is None:
             pytest.skip("Could not load configuration file")

@@ -7,7 +7,7 @@ from loguru import logger
 import cv2 # Import cv2 here
 import time # Import time for sleep
 
-from src.traffic_monitor.services.ocr_reader import OCRReader, ocr_reader_process
+from src.traffic_monitor.services.text_recognition_service import TextRecognitionService, text_recognition_process
 from src.traffic_monitor.utils.logging_config import setup_logging
 
 # Initialize logging for the test environment
@@ -15,7 +15,7 @@ setup_logging()
 
 @pytest.fixture
 def mock_ocr_config():
-    """Provides a mock configuration dictionary for OCRReader tests."""
+    """Provides a mock configuration dictionary for TextRecognitionService tests."""
     return {
         "hub_model_name": "global-plates-mobile-vit-v2-model",  # Use valid model name
         "device": "cpu",
@@ -89,10 +89,10 @@ class MockONNXPlateRecognizer:
 @patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
 def test_ocr_reader_init_success(mock_ocr_config):
     """
-    Tests successful initialization of OCRReader.
+    Tests successful initialization of TextRecognitionService.
     """
     logger.info("Running test_ocr_reader_init_success")
-    reader = OCRReader(mock_ocr_config)
+    reader = TextRecognitionService(mock_ocr_config)
     assert reader is not None
     assert reader.conf_threshold == 0.5
     logger.info("Finished test_ocr_reader_init_success")
@@ -100,7 +100,7 @@ def test_ocr_reader_init_success(mock_ocr_config):
 @patch('fast_plate_ocr.ONNXPlateRecognizer', side_effect=Exception("OCR init error"))
 def test_ocr_reader_init_failure(mock_recognizer, mock_ocr_config):
     """
-    Tests OCRReader initialization failure.
+    Tests TextRecognitionService initialization failure.
     """
     logger.info("Running test_ocr_reader_init_failure")
     # Use a config with invalid model name to trigger the actual error
@@ -108,7 +108,7 @@ def test_ocr_reader_init_failure(mock_recognizer, mock_ocr_config):
     invalid_config["hub_model_name"] = "test_model"  # Invalid model name
     
     with pytest.raises(Exception):  # Don't match specific error message
-        OCRReader(invalid_config)
+        TextRecognitionService(invalid_config)
     logger.info("Finished test_ocr_reader_init_failure")
 
 @patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
@@ -120,7 +120,7 @@ def test_ocr_reader_read_plate_success(mock_ocr_config):
     # Lower the confidence threshold to ensure the test passes
     config = mock_ocr_config.copy()
     config["conf_threshold"] = 0.4  # Lower threshold
-    reader = OCRReader(config)
+    reader = TextRecognitionService(config)
     dummy_plate_image = np.zeros((40, 40, 3), dtype=np.uint8)
     result = reader.read_plate(dummy_plate_image)
     assert result is not None
@@ -137,7 +137,7 @@ def test_ocr_reader_read_plate_no_detection(mock_ocr_config):
     Tests when no plate is detected by the OCR model.
     """
     logger.info("Running test_ocr_reader_read_plate_no_detection")
-    reader = OCRReader(mock_ocr_config)
+    reader = TextRecognitionService(mock_ocr_config)
     with patch.object(reader.reader, 'run', return_value=[]):
         dummy_plate_image = np.zeros((40, 40, 3), dtype=np.uint8)
         result = reader.read_plate(dummy_plate_image)
@@ -152,7 +152,7 @@ def test_ocr_reader_read_plate_low_confidence(mock_ocr_config):
     logger.info("Running test_ocr_reader_read_plate_low_confidence")
     config = mock_ocr_config.copy()
     config["conf_threshold"] = 0.9
-    reader = OCRReader(config)
+    reader = TextRecognitionService(config)
     with patch.object(reader.reader, 'run', return_value=["ABC123", np.array([0.7, 0.7, 0.7, 0.7])]):
         dummy_plate_image = np.zeros((40, 40, 3), dtype=np.uint8)
         result = reader.read_plate(dummy_plate_image)
@@ -165,18 +165,18 @@ def test_ocr_reader_read_plate_invalid_format(mock_ocr_config):
     Tests handling of invalid results format from OCR reader.
     """
     logger.info("Running test_ocr_reader_read_plate_invalid_format")
-    reader = OCRReader(mock_ocr_config)
+    reader = TextRecognitionService(mock_ocr_config)
     with patch.object(reader.reader, 'run', return_value=("ABC123")):
         dummy_plate_image = np.zeros((40, 40, 3), dtype=np.uint8)
         result = reader.read_plate(dummy_plate_image)
         assert result is None
     logger.info("Finished test_ocr_reader_read_plate_invalid_format")
 
-# --- Tests for ocr_reader_process ---
+# --- Tests for text_recognition_process ---
 
 @patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
 @patch('cv2.imdecode', return_value=np.zeros((100, 100, 3), dtype=np.uint8))
-def test_ocr_reader_process_basic_flow(
+def test_text_recognition_process_basic_flow(
     mock_imdecode,
     mock_ocr_config,
     mock_lp_detector_output_queue,
@@ -185,9 +185,9 @@ def test_ocr_reader_process_basic_flow(
     sample_plate_detection_message
 ):
     """
-    Tests the basic flow of ocr_reader_process with successful OCR.
+    Tests the basic flow of text_recognition_process with successful OCR.
     """
-    logger.info("Running test_ocr_reader_process_basic_flow")
+    logger.info("Running test_text_recognition_process_basic_flow")
     
     # Simulate input queue providing messages then None for shutdown
     mock_lp_detector_output_queue.get.side_effect = [
@@ -197,7 +197,7 @@ def test_ocr_reader_process_basic_flow(
     mock_shutdown_event.is_set.side_effect = [False, False, True] # Allow processing, then shut down
 
     process = mp.Process(
-        target=ocr_reader_process,
+        target=text_recognition_process,
         args=(mock_ocr_config, mock_lp_detector_output_queue, mock_ocr_reader_output_queue, mock_shutdown_event)
     )
     process.start()
@@ -223,14 +223,14 @@ def test_ocr_reader_process_basic_flow(
     # In this test, we are signaling shutdown via mock_shutdown_event.
     # The ocr_reader_output_queue will not receive None directly from this process's normal flow.
     # So, we check that it was *not* called with None.
-    # However, the final block in ocr_reader_process puts None to ocr_reader_output_queue on crash.
+    # However, the final block in text_recognition_process puts None to ocr_reader_output_queue on crash.
     # For graceful shutdown via `if lp_message is None:`, it puts None to `lp_detector_output_queue`.
     mock_lp_detector_output_queue.put.assert_called_once_with(None) # Should put None to its input queue to signal shutdown downstream
 
-    logger.info("Finished test_ocr_reader_process_basic_flow")
+    logger.info("Finished test_text_recognition_process_basic_flow")
 
 @patch('fast_plate_ocr.ONNXPlateRecognizer', side_effect=Exception("OCR init error"))
-def test_ocr_reader_process_init_failure(
+def test_text_recognition_process_init_failure(
     mock_recognizer,
     mock_ocr_config,
     mock_lp_detector_output_queue,
@@ -238,12 +238,12 @@ def test_ocr_reader_process_init_failure(
     mock_shutdown_event
 ):
     """
-    Tests ocr_reader_process when OCRReader initialization fails.
+    Tests text_recognition_process when TextRecognitionService initialization fails.
     """
-    logger.info("Running test_ocr_reader_process_init_failure")
+    logger.info("Running test_text_recognition_process_init_failure")
     
     process = mp.Process(
-        target=ocr_reader_process,
+        target=text_recognition_process,
         args=(mock_ocr_config, mock_lp_detector_output_queue, mock_ocr_reader_output_queue, mock_shutdown_event)
     )
     process.start()
@@ -251,11 +251,11 @@ def test_ocr_reader_process_init_failure(
 
     mock_lp_detector_output_queue.get.assert_not_called()
     mock_ocr_reader_output_queue.put.assert_called_once_with(None) # Should signal shutdown
-    logger.info("Finished test_ocr_reader_process_init_failure")
+    logger.info("Finished test_text_recognition_process_init_failure")
 
 @patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
 @patch('cv2.imdecode', return_value=np.zeros((100, 100, 3), dtype=np.uint8))
-def test_ocr_reader_process_empty_input_queue(
+def test_text_recognition_process_empty_input_queue(
     mock_imdecode,
     mock_ocr_config,
     mock_lp_detector_output_queue,
@@ -263,15 +263,15 @@ def test_ocr_reader_process_empty_input_queue(
     mock_shutdown_event
 ):
     """
-    Tests ocr_reader_process when the input queue is empty and then shuts down.
+    Tests text_recognition_process when the input queue is empty and then shuts down.
     """
-    logger.info("Running test_ocr_reader_process_empty_input_queue")
+    logger.info("Running test_text_recognition_process_empty_input_queue")
 
     mock_lp_detector_output_queue.get.side_effect = Empty # Simulate empty queue
     mock_shutdown_event.is_set.side_effect = [False, True] # Allow one loop, then shut down
 
     process = mp.Process(
-        target=ocr_reader_process,
+        target=text_recognition_process,
         args=(mock_ocr_config, mock_lp_detector_output_queue, mock_ocr_reader_output_queue, mock_shutdown_event)
     )
     process.start()
@@ -279,11 +279,11 @@ def test_ocr_reader_process_empty_input_queue(
 
     mock_lp_detector_output_queue.get.assert_called() # Should attempt to get from queue
     mock_ocr_reader_output_queue.put.assert_not_called() # No OCR results, no shutdown signal from this queue
-    logger.info("Finished test_ocr_reader_process_empty_input_queue")
+    logger.info("Finished test_text_recognition_process_empty_input_queue")
 
 @patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
 @patch('cv2.imdecode', return_value=np.zeros((100, 100, 3), dtype=np.uint8))
-def test_ocr_reader_process_output_queue_full(
+def test_text_recognition_process_output_queue_full(
     mock_imdecode,
     mock_ocr_config,
     mock_lp_detector_output_queue,
@@ -292,9 +292,9 @@ def test_ocr_reader_process_output_queue_full(
     sample_plate_detection_message
 ):
     """
-    Tests ocr_reader_process when the output queue is full.
+    Tests text_recognition_process when the output queue is full.
     """
-    logger.info("Running test_ocr_reader_process_output_queue_full")
+    logger.info("Running test_text_recognition_process_output_queue_full")
 
     mock_lp_detector_output_queue.get.side_effect = [
         sample_plate_detection_message, # Message to process
@@ -304,7 +304,7 @@ def test_ocr_reader_process_output_queue_full(
     mock_shutdown_event.is_set.side_effect = [False, False, True] # Allow processing, then shut down
 
     process = mp.Process(
-        target=ocr_reader_process,
+        target=text_recognition_process,
         args=(mock_ocr_config, mock_lp_detector_output_queue, mock_ocr_reader_output_queue, mock_shutdown_event)
     )
     process.start()
@@ -313,11 +313,11 @@ def test_ocr_reader_process_output_queue_full(
     mock_ocr_reader_output_queue.put.assert_called_once() # Attempt to put
     # The process will continue to loop and eventually receive the None shutdown signal
     # and then send None to lp_detector_output_queue, but ocr_reader_output_queue won't get None.
-    logger.info("Finished test_ocr_reader_process_output_queue_full")
+    logger.info("Finished test_text_recognition_process_output_queue_full")
 
 @patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
 @patch('cv2.imdecode', return_value=np.zeros((100, 100, 3), dtype=np.uint8))
-def test_ocr_reader_process_invalid_bbox(
+def test_text_recognition_process_invalid_bbox(
     mock_imdecode,
     mock_ocr_config,
     mock_lp_detector_output_queue,
@@ -326,9 +326,9 @@ def test_ocr_reader_process_invalid_bbox(
     sample_plate_detection_message
 ):
     """
-    Tests ocr_reader_process with invalid bounding box coordinates.
+    Tests text_recognition_process with invalid bounding box coordinates.
     """
-    logger.info("Running test_ocr_reader_process_invalid_bbox")
+    logger.info("Running test_text_recognition_process_invalid_bbox")
 
     invalid_bbox_message = sample_plate_detection_message.copy()
     invalid_bbox_message["plate_bbox_original"] = [50, 10, 10, 50] # Invalid: x1 >= x2
@@ -340,18 +340,18 @@ def test_ocr_reader_process_invalid_bbox(
     mock_shutdown_event.is_set.side_effect = [False, False, True] # Allow processing, then shut down
 
     process = mp.Process(
-        target=ocr_reader_process,
+        target=text_recognition_process,
         args=(mock_ocr_config, mock_lp_detector_output_queue, mock_ocr_reader_output_queue, mock_shutdown_event)
     )
     process.start()
     process.join(timeout=10)
 
     mock_ocr_reader_output_queue.put.assert_not_called() # No OCR result should be put
-    logger.info("Finished test_ocr_reader_process_invalid_bbox")
+    logger.info("Finished test_text_recognition_process_invalid_bbox")
 
 @patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
 @patch('cv2.imdecode', side_effect=Exception("Imdecode error"))
-def test_ocr_reader_process_imdecode_failure(
+def test_text_recognition_process_imdecode_failure(
     mock_imdecode,
     mock_ocr_config,
     mock_lp_detector_output_queue,
@@ -360,9 +360,9 @@ def test_ocr_reader_process_imdecode_failure(
     sample_plate_detection_message
 ):
     """
-    Tests ocr_reader_process when cv2.imdecode fails.
+    Tests text_recognition_process when cv2.imdecode fails.
     """
-    logger.info("Running test_ocr_reader_process_imdecode_failure")
+    logger.info("Running test_text_recognition_process_imdecode_failure")
 
     mock_lp_detector_output_queue.get.side_effect = [
         sample_plate_detection_message,
@@ -371,11 +371,11 @@ def test_ocr_reader_process_imdecode_failure(
     mock_shutdown_event.is_set.side_effect = [False, False, True] # Allow processing, then shut down
 
     process = mp.Process(
-        target=ocr_reader_process,
+        target=text_recognition_process,
         args=(mock_ocr_config, mock_lp_detector_output_queue, mock_ocr_reader_output_queue, mock_shutdown_event)
     )
     process.start()
     process.join(timeout=10)
 
     mock_ocr_reader_output_queue.put.assert_called_once_with(None) # Should signal shutdown due to error
-    logger.info("Finished test_ocr_reader_process_imdecode_failure") 
+    logger.info("Finished test_text_recognition_process_imdecode_failure") 

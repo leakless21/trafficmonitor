@@ -13,7 +13,7 @@ from ..utils.logging_config import setup_logging
 from ..utils.queue_utils import safe_put, log_queue_stats
 
 
-class VehicleTracker:
+class VehicleTrackingService:
     """
     Manages the vehicle tracking logic using the BoxMOT library.
     Initializes the tracker and processes raw detections into tracked objects.
@@ -37,7 +37,7 @@ class VehicleTracker:
                 half=half,
                 per_class=per_class
             )
-            logger.info(f"VehicleTracker initialized: {tracker_type} on {device}")
+            logger.info(f"VehicleTrackingService initialized: {tracker_type} on {device}")
         except Exception as e:
             logger.exception(f"Failed to create tracker {tracker_type}: {e}")
             raise # Re-raise the exception to propagate the error
@@ -103,7 +103,7 @@ class VehicleTracker:
         # Convert the tracked objects (numpy array) to a list of dictionaries
         return self._tracks_to_dict(track_numpy, class_mapping)
     
-def vehicle_tracker_process(config: Dict[str, Any], input_queue: Queue, output_queue: Queue, shutdown_event: Event):
+def vehicle_tracking_process(config: Dict[str, Any], input_queue: Queue, output_queue: Queue, shutdown_event: Event):
     """
     The main process function for the vehicle tracker.
 
@@ -120,7 +120,7 @@ def vehicle_tracker_process(config: Dict[str, Any], input_queue: Queue, output_q
     setup_logging(config.get("loguru")) # Initialize logging for this process
     process_name = mp.current_process().name
     offline_mode = config.get("offline_mode", False)
-    service_name = config.get("service_name", "VehicleTracker")
+    service_name = config.get("service_name", "VehicleTrackingService")
     logger.info(f"Vehicle Tracker process {process_name} started")
 
     try:
@@ -136,7 +136,7 @@ def vehicle_tracker_process(config: Dict[str, Any], input_queue: Queue, output_q
         tracker_config_path = Path(__file__).resolve().parent.parent / "config" / "trackers" / f"{tracker_type}.yaml"
 
         try:
-            tracker = VehicleTracker(
+            tracker = VehicleTrackingService(
                 tracker_type=tracker_type,
                 reid_model_path=reid_model_path,
                 device=device,
@@ -146,7 +146,7 @@ def vehicle_tracker_process(config: Dict[str, Any], input_queue: Queue, output_q
             )
             logger.info(f"Vehicle tracker initialized with {tracker_type}")
         except Exception as e:
-            logger.exception(f"Failed to initialize VehicleTracker: {e}")
+            logger.exception(f"Failed to initialize VehicleTrackingService: {e}")
             return # Exit if initialization fails
 
         while not shutdown_event.is_set():

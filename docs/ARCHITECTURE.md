@@ -1,8 +1,75 @@
 ## Architecture Design and Deployment Considerations
 
-### FrameGrabber Component
+### High-Level System Architecture
 
-**Purpose:** The `FrameGrabber` component is responsible for ingesting video streams and providing raw frames to downstream components. It also supports optional frame skipping to reduce processing load.
+```mermaid
+graph LR
+  subgraph Orchestration
+    CLI["CLI (traffic-monitor)"]
+    Supervisor["Main Supervisor"]
+  end
+  subgraph Input
+    VideoSource["Video Source (File / IP Camera)"]
+  end
+  subgraph Processing
+    FrameCapture["Frame Capture Service"]
+    VehicleDetection["Vehicle Detection Service"]
+    VehicleTracking["Vehicle Tracking Service"]
+    VehicleCounting["Vehicle Counting Service"]
+    LPDetection["License Plate Detection Service"]
+    TextRecognition["Text Recognition Service"]
+  end
+  subgraph Output
+    EventDistribution["Event Distribution Service"]
+    Visualization["Visualization Service"]
+    Database["SQLite (minidb)"]
+  end
+
+  VideoSource --> FrameCapture
+  FrameCapture --> VehicleDetection
+  VehicleDetection --> VehicleTracking
+  VehicleTracking --> VehicleCounting
+  VehicleTracking --> LPDetection
+  LPDetection --> TextRecognition
+  VehicleCounting --> EventDistribution
+  TextRecognition --> EventDistribution
+  EventDistribution --> Database
+  VehicleTracking --> Visualization
+  VehicleCounting --> Visualization
+  TextRecognition --> Visualization
+```
+
+### End-to-End Workflow
+
+```mermaid
+sequenceDiagram
+  participant SRC as Video Source
+  participant FC as Frame Capture
+  participant VD as Vehicle Detection
+  participant VT as Vehicle Tracking
+  participant VC as Vehicle Counting
+  participant LPD as License Plate Detection
+  participant OCR as Text Recognition
+  participant DB as SQLite
+  participant VIS as Visualization
+
+  SRC->>FC: read_frame()
+  FC->>VD: FrameMessage
+  VD->>VT: VehicleDetectionMessage
+  VT->>VC: TrackedVehicleMessage
+  VC->>VIS: VehicleCountMessage
+  VT->>LPD: plate_crops
+  LPD->>OCR: crop_images
+  OCR->>VIS: OCRResult
+  VC->>DB: write_vehicle_count()
+  OCR->>DB: write_plate_result()
+```
+
+<!-- The detailed component descriptions follow below -->
+
+### FrameCaptureService Component
+
+**Purpose:** The `FrameCaptureService` component is responsible for ingesting video streams and providing raw frames to downstream components. It also supports optional frame skipping to reduce processing load.
 
 **Area of Responsibility:**
 
@@ -24,7 +91,7 @@
 **Interfaces:**
 
 - **Input:** Configured `video_source` path or camera index.
-- **Output:** Sends `FrameMessage` objects to the `VehicleDetector` process via a multiprocessing queue. Each message contains JPEG-encoded frame data, metadata, and unique identifiers.
+- **Output:** Sends `FrameMessage` objects to the `VehicleDetectionService` process via a multiprocessing queue. Each message contains JPEG-encoded frame data, metadata, and unique identifiers.
 
 **Dependencies:**
 
@@ -38,9 +105,9 @@
 - `log_every_n_frames` (int): Frequency for logging frame processing status.
 - `process_every_n_frame` (int): Specifies how many frames to skip (e.g., `1` for no skipping, `2` to process every other frame). Default is 1.
 
-### VehicleTracker Component
+### VehicleTrackingService Component
 
-**Purpose:** The `VehicleTracker` component is responsible for managing vehicle tracking logic using the BoxMOT library. It initializes the tracker and processes raw detections from the `VehicleDetector` into tracked objects.
+**Purpose:** The `VehicleTrackingService` component is responsible for managing vehicle tracking logic using the BoxMOT library. It initializes the tracker and processes raw detections from the `VehicleDetectionService` into tracked objects.
 
 **Area of Responsibility:**
 
@@ -61,7 +128,7 @@
 
 **Interfaces:**
 
-- **Input:** Receives `VehicleDetectionMessage` objects from the `VehicleDetector` process via a multiprocessing queue. Each message contains frame data and a list of `Detection` objects.
+- **Input:** Receives `VehicleDetectionMessage` objects from the `VehicleDetectionService` process via a multiprocessing queue. Each message contains frame data and a list of `Detection` objects.
 - **Output:** Sends `TrackedVehicleMessage` objects to downstream processes (e.g., for visualization or data logging) via a multiprocessing queue. Each message includes tracked objects, frame metadata, and JPEG-encoded frame data.
 
 **Dependencies:**
@@ -71,11 +138,11 @@
 
 ### Inter-process Communication
 
-The system utilizes `multiprocessing.Queue` for inter-process communication between the `FrameGrabber`, `VehicleDetector`, and `VehicleTracker` components. The following queues are configured with a `maxsize` of 100 to accommodate processing loads and prevent frame drops:
+The system utilizes `multiprocessing.Queue` for inter-process communication between the `FrameCaptureService`, `VehicleDetectionService`, and `VehicleTrackingService` components. The following queues are configured with a `maxsize` of 100 to accommodate processing loads and prevent frame drops:
 
-- **`frame_grabber_output_queue`**: Transfers `FrameMessage` objects from `FrameGrabber` to `VehicleDetector`.
-- **`vehicle_detector_output_queue`**: Transfers `VehicleDetectionMessage` objects from `VehicleDetector` to `VehicleTracker`.
-- **`vehicle_tracker_output_queue`**: Transfers `TrackedVehicleMessage` objects from `VehicleTracker` to downstream processes (e.g., for visualization or data logging).
+- **`frame_capture_output_queue`**: Transfers `FrameMessage` objects from `FrameCaptureService` to `VehicleDetectionService`.
+- **`vehicle_detection_output_queue`**: Transfers `VehicleDetectionMessage` objects from `VehicleDetectionService` to `VehicleTrackingService`.
+- **`vehicle_tracking_output_queue`**: Transfers `TrackedVehicleMessage` objects from `VehicleTrackingService` to downstream processes (e.g., for visualization or data logging).
 
 **Configuration:**
 
@@ -95,7 +162,7 @@ The system utilizes `multiprocessing.Queue` for inter-process communication betw
 - Centralized logging setup via `src/traffic_monitor/utils/logging_config.py`.
 - Customizable logging levels and formats.
 - Output to both console and file for comprehensive record-keeping.
-- **Multiprocessing Support:** Each child process (VehicleDetector, VehicleTracker, LPDetector, OCRReader) independently sets up logging to ensure proper log output from all processes.
+- **Multiprocessing Support:** Each child process (VehicleDetectionService, VehicleTrackingService, LicensePlateDetectionService, TextRecognitionService) independently sets up logging to ensure proper log output from all processes.
 
 **Configuration:**
 
@@ -105,7 +172,7 @@ The system utilizes `multiprocessing.Queue` for inter-process communication betw
 
 **Dependencies:**
 
-- Each multiprocessing service (`lp_detector_process`, `ocr_reader_process`, etc.) must import and call `setup_logging()` to initialize logging properly.
+- Each multiprocessing service (`license_plate_detection_process`, `text_recognition_process`, etc.) must import and call `setup_logging()` to initialize logging properly.
 
 ### Vehicle Counter Service
 
@@ -120,7 +187,7 @@ The system utilizes `multiprocessing.Queue` for inter-process communication betw
 
 ### OCR Component
 
-**Purpose:** The `OCRReader` component is responsible for performing Optical Character Recognition (OCR) on image regions, specifically for license plates. It supports multiple OCR engines selectable at runtime via the `backend` parameter ("fast_plate_ocr" or "paddleocr").
+**Purpose:** The `TextRecognitionService` component is responsible for performing Optical Character Recognition (OCR) on image regions, specifically for license plates. It supports multiple OCR engines selectable at runtime via the `backend` parameter ("fast_plate_ocr" or "paddleocr").
 
 **Area of Responsibility:**
 
@@ -140,7 +207,7 @@ The system utilizes `multiprocessing.Queue` for inter-process communication betw
 
 **Interfaces:**
 
-- **Input:** Receives image crops (e.g., license plate regions) from `LPDetector` or other components via a multiprocessing queue.
+- **Input:** Receives image crops (e.g., license plate regions) from `LicensePlateDetectionService` or other components via a multiprocessing queue.
 - **Output:** Sends `OCRResult` objects containing recognized text, confidence, and processing time to downstream processes (e.g., for visualization or data logging) via a multiprocessing queue.
 
 **Dependencies:**

@@ -43,13 +43,13 @@ trafficmonitor/
 The system is designed with a multiprocessing architecture, where each core functionality operates as an independent process, communicating via inter-process queues. Key components include:
 
 - **`MainSupervisor`**: Orchestrates the entire system, launching and managing all worker processes.
-- **`FrameGrabber`**: Ingests video streams, decodes frames, and prepares them for further processing. Supports frame skipping and resizing.
-- **`VehicleDetector`**: Detects vehicles within frames using a YOLO model, identifying bounding boxes, confidence scores, and class IDs.
-- **`VehicleTracker`**: Tracks detected vehicles across frames using the BoxMOT library, assigning unique track IDs and maintaining object states.
-- **`VehicleCounter`**: Counts vehicles based on geometric intersections with predefined counting lines, preventing double-counting.
-- **`LPDetector`**: (Implicit, based on OCR input) Likely responsible for detecting license plates within vehicle bounding boxes before passing them to the OCRReader.
-- **`OCRReader`**: Performs Optical Character Recognition on license plate crops using configurable OCR engines (FastPlateOCR, PaddleOCR).
-- **`Visualizer`**: Renders real-time video feeds with overlays, including bounding boxes, track IDs, counting lines, and dynamic statistics.
+- **`FrameCaptureService`**: Ingests video streams, decodes frames, and prepares them for further processing. Supports frame skipping and resizing.
+- **`VehicleDetectionService`**: Detects vehicles within frames using a YOLO model, identifying bounding boxes, confidence scores, and class IDs.
+- **`VehicleTrackingService`**: Tracks detected vehicles across frames using the BoxMOT library, assigning unique track IDs and maintaining object states.
+- **`VehicleCountingService`**: Counts vehicles based on geometric intersections with predefined counting lines, preventing double-counting.
+- **`LicensePlateDetectionService`**: (Implicit, based on OCR input) Likely responsible for detecting license plates within vehicle bounding boxes before passing them to the TextRecognitionService.
+- **`TextRecognitionService`**: Performs Optical Character Recognition on license plate crops using configurable OCR engines (FastPlateOCR, PaddleOCR).
+- **`VisualizationService`**: Renders real-time video feeds with overlays, including bounding boxes, track IDs, counting lines, and dynamic statistics.
 - **`Persistence (minidb)`**: Manages data storage in an SQLite database for plate recognition results and vehicle count data, ensuring robust and concurrent write operations.
 - **`Logging`**: A centralized logging system provides detailed insights into the application's runtime behavior, supporting multiprocessing environments and configurable output.
 

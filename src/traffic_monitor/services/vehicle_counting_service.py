@@ -13,7 +13,7 @@ from ..utils.logging_config import setup_logging
 from ..utils.minidb import configure_database, write_vehicle_count
 from ..utils.queue_utils import safe_put, log_queue_stats
 
-class Counter:
+class VehicleCountingService:
     def __init__(self, counting_lines_config: list):
         # Handle case where config is a list of lines vs a single line
         if not counting_lines_config:
@@ -104,21 +104,21 @@ class Counter:
             )
         return None
     
-def vehicle_counter_process(config: dict, input_queue: Queue, output_queue: Queue, shutdown_event: Event):
+def vehicle_counting_process(config: dict, input_queue: Queue, output_queue: Queue, shutdown_event: Event):
     setup_logging(config.get("loguru"))  # Initialize logging for this process
     # Configure database for this subprocess
     configure_database(config)
     process_name = mp.current_process().name
     offline_mode = config.get("offline_mode", False)
-    service_name = config.get("service_name", "VehicleCounter")
-    logger.info(f"[VehicleCounter] Process {process_name} started")
+    service_name = config.get("service_name", "VehicleCountingService")
+    logger.info(f"[VehicleCountingService] Process {process_name} started")
     try:
         counting_line_coords_list = config.get("counting_lines", [])
         if not counting_line_coords_list:
             logger.error("[VehicleCounter] No counting lines configured")
             return
         
-        counter = Counter(counting_line_coords_list)
+        counter = VehicleCountingService(counting_line_coords_list)
         while not shutdown_event.is_set():
             try:
                 message: TrackedVehicleMessage = input_queue.get(timeout=1)

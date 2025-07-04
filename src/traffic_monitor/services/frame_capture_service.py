@@ -11,7 +11,7 @@ from multiprocessing.synchronize import Event
 from ..utils.logging_config import setup_logging
 from ..utils.queue_utils import safe_put, log_queue_stats
 
-def frame_grabber_process(
+def frame_capture_process(
     config: Dict[str, Any],
     output_queue: Queue,
     shutdown_event: Event
@@ -34,7 +34,7 @@ def frame_grabber_process(
     
     process_name = mp.current_process().name
     offline_mode = config.get("offline_mode", False)
-    service_name = config.get("service_name", "FrameGrabber")
+    service_name = config.get("service_name", "FrameCaptureService")
     
     video_source = config.get("video_source")
     if not video_source:
@@ -176,7 +176,7 @@ if __name__ == "__main__":
 
     import threading
     test_thread = threading.Thread(
-        target=frame_grabber_process, 
+        target=frame_capture_process, 
         args=(mock_config, mock_output_queue, mock_shutdown_event)
     )
     test_thread.name = "TestFrameGrabber"  # Assign a name for logging

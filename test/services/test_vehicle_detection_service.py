@@ -7,7 +7,7 @@ from loguru import logger
 import cv2
 import time
 
-from src.traffic_monitor.services.vehicle_detector import VehicleDetector, vehicle_detector_process
+from src.traffic_monitor.services.vehicle_detection_service import VehicleDetectionService, vehicle_detection_process
 from src.traffic_monitor.utils.logging_config import setup_logging
 from src.traffic_monitor.utils.custom_types import Detection
 
@@ -16,7 +16,7 @@ setup_logging()
 
 @pytest.fixture
 def mock_vehicle_detector_config():
-    """Provides a mock configuration dictionary for VehicleDetector tests."""
+    """Provides a mock configuration dictionary for VehicleDetectionService tests."""
     return {
         "model_path": "data/models/yolov8n.pt",
         "conf_threshold": 0.7,
@@ -77,7 +77,7 @@ def sample_frame_message():
 
 class MockYOLOModel:
     """
-    A mock YOLO model to simulate ultralytics.YOLO behavior for VehicleDetector.
+    A mock YOLO model to simulate ultralytics.YOLO behavior for VehicleDetectionService.
     """
     def __init__(self, *args, **kwargs):
         pass
@@ -115,10 +115,10 @@ class MockYOLOModel:
 @patch('ultralytics.YOLO', new=MockYOLOModel)
 def test_vehicle_detector_init_success(mock_vehicle_detector_config):
     """
-    Tests successful initialization of VehicleDetector.
+    Tests successful initialization of VehicleDetectionService.
     """
     logger.info("Running test_vehicle_detector_init_success")
-    detector = VehicleDetector(
+    detector = VehicleDetectionService(
         mock_vehicle_detector_config["model_path"],
         mock_vehicle_detector_config["conf_threshold"],
         mock_vehicle_detector_config["class_mapping"]
@@ -131,11 +131,11 @@ def test_vehicle_detector_init_success(mock_vehicle_detector_config):
 @patch('ultralytics.YOLO', side_effect=Exception("YOLO load error"))
 def test_vehicle_detector_init_failure(mock_yolo_model, mock_vehicle_detector_config):
     """
-    Tests VehicleDetector initialization failure.
+    Tests VehicleDetectionService initialization failure.
     """
     logger.info("Running test_vehicle_detector_init_failure")
     with pytest.raises(Exception, match="YOLO load error"):
-        VehicleDetector(
+        VehicleDetectionService(
             mock_vehicle_detector_config["model_path"],
             mock_vehicle_detector_config["conf_threshold"],
             mock_vehicle_detector_config["class_mapping"]
@@ -148,7 +148,7 @@ def test_vehicle_detector_detect_success(mock_vehicle_detector_config):
     Tests successful vehicle detection.
     """
     logger.info("Running test_vehicle_detector_detect_success")
-    detector = VehicleDetector(
+    detector = VehicleDetectionService(
         mock_vehicle_detector_config["model_path"],
         mock_vehicle_detector_config["conf_threshold"],
         mock_vehicle_detector_config["class_mapping"]
@@ -181,7 +181,7 @@ def test_vehicle_detector_detect_no_detection_below_threshold(mock_vehicle_detec
     logger.info("Running test_vehicle_detector_detect_no_detection_below_threshold")
     config = mock_vehicle_detector_config.copy()
     config["conf_threshold"] = 0.95 # Set a higher threshold
-    detector = VehicleDetector(
+    detector = VehicleDetectionService(
         config["model_path"],
         config["conf_threshold"],
         config["class_mapping"]
@@ -201,7 +201,7 @@ def test_vehicle_detector_detect_unmapped_class(mock_vehicle_detector_config):
     config = mock_vehicle_detector_config.copy()
     # Temporarily remove 'person' from class_mapping to simulate unmapped class
     config["class_mapping"] = {2: "car"}
-    detector = VehicleDetector(
+    detector = VehicleDetectionService(
         config["model_path"],
         config["conf_threshold"],
         config["class_mapping"]
@@ -214,11 +214,11 @@ def test_vehicle_detector_detect_unmapped_class(mock_vehicle_detector_config):
     assert detections[0]["class_name"] == "car"
     logger.info("Finished test_vehicle_detector_detect_unmapped_class")
 
-# --- Tests for vehicle_detector_process ---
+# --- Tests for vehicle_detection_process ---
 
-@patch('src.traffic_monitor.services.vehicle_detector.VehicleDetector')
+@patch('src.traffic_monitor.services.vehicle_detector.VehicleDetectionService')
 @patch('cv2.imdecode', return_value=np.zeros((480, 640, 3), dtype=np.uint8))
-def test_vehicle_detector_process_basic_flow(
+def test_vehicle_detection_process_basic_flow(
     mock_imdecode,
     mock_vehicle_detector_class,
     mock_vehicle_detector_config,
@@ -228,11 +228,11 @@ def test_vehicle_detector_process_basic_flow(
     sample_frame_message
 ):
     """
-    Tests the basic flow of vehicle_detector_process with successful detections.
+    Tests the basic flow of vehicle_detection_process with successful detections.
     """
-    logger.info("Running test_vehicle_detector_process_basic_flow")
+    logger.info("Running test_vehicle_detection_process_basic_flow")
     
-    # Setup mock VehicleDetector instance
+    # Setup mock VehicleDetectionService instance
     mock_detector_instance = MagicMock()
     mock_vehicle_detector_class.return_value = mock_detector_instance
     mock_detector_instance.detect.return_value = [
@@ -247,7 +247,7 @@ def test_vehicle_detector_process_basic_flow(
     mock_shutdown_event.is_set.side_effect = [False, False, True] # Allow processing, then shut down
 
     process = mp.Process(
-        target=vehicle_detector_process,
+        target=vehicle_detection_process,
         args=(mock_vehicle_detector_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     )
     process.start()
@@ -271,10 +271,10 @@ def test_vehicle_detector_process_basic_flow(
     # Check for the shutdown signal
     assert mock_output_queue.put.call_args_list[1][0][0] is None
 
-    logger.info("Finished test_vehicle_detector_process_basic_flow")
+    logger.info("Finished test_vehicle_detection_process_basic_flow")
 
-@patch('src.traffic_monitor.services.vehicle_detector.VehicleDetector', side_effect=Exception("Detector init error"))
-def test_vehicle_detector_process_init_failure(
+@patch('src.traffic_monitor.services.vehicle_detector.VehicleDetectionService', side_effect=Exception("Detector init error"))
+def test_vehicle_detection_process_init_failure(
     mock_detector_class,
     mock_vehicle_detector_config,
     mock_input_queue,
@@ -282,12 +282,12 @@ def test_vehicle_detector_process_init_failure(
     mock_shutdown_event
 ):
     """
-    Tests vehicle_detector_process when VehicleDetector initialization fails.
+    Tests vehicle_detection_process when VehicleDetectionService initialization fails.
     """
-    logger.info("Running test_vehicle_detector_process_init_failure")
+    logger.info("Running test_vehicle_detection_process_init_failure")
 
     process = mp.Process(
-        target=vehicle_detector_process,
+        target=vehicle_detection_process,
         args=(mock_vehicle_detector_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     )
     process.start()
@@ -296,11 +296,11 @@ def test_vehicle_detector_process_init_failure(
     mock_detector_class.assert_called_once()
     mock_input_queue.get.assert_not_called()
     mock_output_queue.put.assert_not_called() # No output if init fails before queue loop
-    logger.info("Finished test_vehicle_detector_process_init_failure")
+    logger.info("Finished test_vehicle_detection_process_init_failure")
 
-@patch('src.traffic_monitor.services.vehicle_detector.VehicleDetector')
+@patch('src.traffic_monitor.services.vehicle_detector.VehicleDetectionService')
 @patch('cv2.imdecode', return_value=np.zeros((480, 640, 3), dtype=np.uint8))
-def test_vehicle_detector_process_empty_input_queue(
+def test_vehicle_detection_process_empty_input_queue(
     mock_imdecode,
     mock_detector_class,
     mock_vehicle_detector_config,
@@ -309,9 +309,9 @@ def test_vehicle_detector_process_empty_input_queue(
     mock_shutdown_event
 ):
     """
-    Tests vehicle_detector_process when the input queue is empty.
+    Tests vehicle_detection_process when the input queue is empty.
     """
-    logger.info("Running test_vehicle_detector_process_empty_input_queue")
+    logger.info("Running test_vehicle_detection_process_empty_input_queue")
 
     mock_detector_instance = MagicMock()
     mock_detector_class.return_value = mock_detector_instance
@@ -321,7 +321,7 @@ def test_vehicle_detector_process_empty_input_queue(
     mock_shutdown_event.is_set.side_effect = [False, True] # Allow one loop, then shut down
 
     process = mp.Process(
-        target=vehicle_detector_process,
+        target=vehicle_detection_process,
         args=(mock_vehicle_detector_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     )
     process.start()
@@ -329,11 +329,11 @@ def test_vehicle_detector_process_empty_input_queue(
 
     mock_input_queue.get.assert_called() # Should attempt to get from queue
     mock_output_queue.put.assert_not_called() # No detections, so no put expected before shutdown
-    logger.info("Finished test_vehicle_detector_process_empty_input_queue")
+    logger.info("Finished test_vehicle_detection_process_empty_input_queue")
 
-@patch('src.traffic_monitor.services.vehicle_detector.VehicleDetector')
+@patch('src.traffic_monitor.services.vehicle_detector.VehicleDetectionService')
 @patch('cv2.imdecode', return_value=np.zeros((480, 640, 3), dtype=np.uint8))
-def test_vehicle_detector_process_output_queue_full(
+def test_vehicle_detection_process_output_queue_full(
     mock_imdecode,
     mock_detector_class,
     mock_vehicle_detector_config,
@@ -343,9 +343,9 @@ def test_vehicle_detector_process_output_queue_full(
     sample_frame_message
 ):
     """
-    Tests vehicle_detector_process when the output queue is full.
+    Tests vehicle_detection_process when the output queue is full.
     """
-    logger.info("Running test_vehicle_detector_process_output_queue_full")
+    logger.info("Running test_vehicle_detection_process_output_queue_full")
 
     mock_detector_instance = MagicMock()
     mock_detector_class.return_value = mock_detector_instance
@@ -361,18 +361,18 @@ def test_vehicle_detector_process_output_queue_full(
     mock_shutdown_event.is_set.side_effect = [False, False, True] # Allow processing, then shut down
 
     process = mp.Process(
-        target=vehicle_detector_process,
+        target=vehicle_detection_process,
         args=(mock_vehicle_detector_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     )
     process.start()
     process.join(timeout=5)
 
     mock_output_queue.put.assert_called_once() # Should attempt to put at least once
-    logger.info("Finished test_vehicle_detector_process_output_queue_full")
+    logger.info("Finished test_vehicle_detection_process_output_queue_full")
 
-@patch('src.traffic_monitor.services.vehicle_detector.VehicleDetector')
+@patch('src.traffic_monitor.services.vehicle_detector.VehicleDetectionService')
 @patch('cv2.imdecode', side_effect=Exception("Imdecode error"))
-def test_vehicle_detector_process_imdecode_failure(
+def test_vehicle_detection_process_imdecode_failure(
     mock_imdecode,
     mock_detector_class,
     mock_vehicle_detector_config,
@@ -382,9 +382,9 @@ def test_vehicle_detector_process_imdecode_failure(
     sample_frame_message
 ):
     """
-    Tests vehicle_detector_process when cv2.imdecode fails.
+    Tests vehicle_detection_process when cv2.imdecode fails.
     """
-    logger.info("Running test_vehicle_detector_process_imdecode_failure")
+    logger.info("Running test_vehicle_detection_process_imdecode_failure")
 
     mock_detector_instance = MagicMock()
     mock_detector_class.return_value = mock_detector_instance
@@ -397,11 +397,11 @@ def test_vehicle_detector_process_imdecode_failure(
     mock_shutdown_event.is_set.side_effect = [False, False, True] # Allow processing, then shut down
 
     process = mp.Process(
-        target=vehicle_detector_process,
+        target=vehicle_detection_process,
         args=(mock_vehicle_detector_config, mock_input_queue, mock_output_queue, mock_shutdown_event)
     )
     process.start()
     process.join(timeout=5)
 
     mock_output_queue.put.assert_called_once_with(None) # Should signal shutdown due to error
-    logger.info("Finished test_vehicle_detector_process_imdecode_failure") 
+    logger.info("Finished test_vehicle_detection_process_imdecode_failure") 

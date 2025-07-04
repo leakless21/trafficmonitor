@@ -4,24 +4,24 @@ import time
 from queue import Empty
 from unittest.mock import patch, MagicMock
 
-from src.traffic_monitor.services.vehicle_counter import vehicle_counter_process, Counter
+from src.traffic_monitor.services.vehicle_counting_service import vehicle_counting_process, VehicleCountingService
 from src.traffic_monitor.utils.custom_types import TrackedVehicleMessage, VehicleCountMessage
 from src.traffic_monitor.utils.logging_config import setup_logging
 
 setup_logging()
 
-class TestCounter:
-    def test_counter_initialization(self):
+class TestVehicleCountingService:
+    def test_VehicleCountingService_initialization(self):
         counting_lines = [[[0.0, 0.694], [1.0, 0.694]]]  # Relative coordinates
-        counter = Counter(counting_lines)
+        counter = VehicleCountingService(counting_lines)
         assert len(counter.counting_lines_relative) == 1
         assert counter.vehicle_last_positions == {}
         assert counter.counted_track_ids == set()
         assert counter.counts == {}
 
-    def test_counter_vehicle_crossing(self):
+    def test_VehicleCountingService_vehicle_crossing(self):
         counting_lines = [[[0.25, 0.25], [0.5, 0.25]]]  # Relative horizontal line at 25% height
-        counter = Counter(counting_lines)
+        counter = VehicleCountingService(counting_lines)
         frame_width, frame_height = 400, 400  # Square frame for easier testing
         
         # First frame - vehicle above line (at 20% height)
@@ -44,8 +44,8 @@ class TestCounter:
         assert result["total_count"] == 1
         assert result["class_counts"]["car"] == 1
 
-    def test_vehicle_counter_process_config(self):
-        """Test vehicle counter process initialization with relative coordinates."""
+    def test_vehicle_counting_process_config(self):
+        """Test vehicle VehicleCountingService process initialization with relative coordinates."""
         config = {
             "counting_lines": [[[0.0, 0.694], [1.0, 0.694]]],  # Relative coordinates
             "loguru": {
@@ -78,7 +78,7 @@ class TestCounter:
         input_queue.put(None)  # Signal to stop
         
         # This should not crash and should process the message
-        vehicle_counter_process(config, input_queue, output_queue, shutdown_event)
+        vehicle_counting_process(config, input_queue, output_queue, shutdown_event)
         
         # Check that no exceptions were raised (process completed)
         assert True
@@ -86,7 +86,7 @@ class TestCounter:
     def test_multiple_vehicles_crossing(self):
         """Test counting multiple vehicles crossing a relative line."""
         counting_lines = [[[0.0, 0.5], [1.0, 0.5]]]  # Horizontal line at 50% height
-        counter = Counter(counting_lines)
+        counter = VehicleCountingService(counting_lines)
         frame_width, frame_height = 640, 480
         
         # Frame 1: Two vehicles above the line
@@ -127,7 +127,7 @@ class TestCounter:
     def test_relative_coordinates_different_resolutions(self):
         """Test that relative coordinates work correctly across different frame resolutions."""
         counting_lines = [[[0.0, 0.5], [1.0, 0.5]]]  # Horizontal line at 50% height
-        counter = Counter(counting_lines)
+        counter = VehicleCountingService(counting_lines)
         
         # Test with different resolutions
         test_cases = [
@@ -138,7 +138,7 @@ class TestCounter:
         ]
         
         for frame_width, frame_height in test_cases:
-            counter_test = Counter(counting_lines)
+            VehicleCountingService_test = VehicleCountingService(counting_lines)
             mid_height = frame_height // 2
             
             # Vehicle starts above the middle line
@@ -147,7 +147,7 @@ class TestCounter:
                 "bbox_xyxy": [frame_width//4, mid_height-50, frame_width//4+40, mid_height-10],
                 "class_name": "car"
             }]
-            result = counter_test.update(tracked_objects_1, frame_width, frame_height)
+            result = VehicleCountingService_test.update(tracked_objects_1, frame_width, frame_height)
             assert result is None
             
             # Vehicle crosses to below the middle line
@@ -156,12 +156,12 @@ class TestCounter:
                 "bbox_xyxy": [frame_width//4, mid_height+10, frame_width//4+40, mid_height+50],
                 "class_name": "car"
             }]
-            result = counter_test.update(tracked_objects_2, frame_width, frame_height)
+            result = VehicleCountingService_test.update(tracked_objects_2, frame_width, frame_height)
             assert result is not None
             assert result["total_count"] == 1
 
-    def test_vehicle_counter_message_structure(self):
-        """Test that VehicleCounter can handle TrackedVehicleMessage with all required fields."""
+    def test_vehicle_VehicleCountingService_message_structure(self):
+        """Test that VehicleVehicleCountingService can handle TrackedVehicleMessage with all required fields."""
         
         # Create a complete TrackedVehicleMessage with all required fields
         test_message = {
@@ -191,9 +191,9 @@ class TestCounter:
             ]
         }
         
-        # Test that Counter.update() can process this message structure
+        # Test that counter.update() can process this message structure
         counting_lines = [[[0.3, 0.3], [0.7, 0.7]]]
-        counter = Counter(counting_lines)
+        counter = VehicleCountingService(counting_lines)
         
         # This should not raise a KeyError for og_frame_width/og_frame_height
         try:
@@ -205,13 +205,13 @@ class TestCounter:
                 og_height=test_message["og_frame_height"]
             )
             # Test passes if no exception is raised
-            assert True, "VehicleCounter successfully processed message with og_frame dimensions"
+            assert True, "VehicleVehicleCountingService successfully processed message with og_frame dimensions"
         except KeyError as e:
-            pytest.fail(f"VehicleCounter failed to process message due to missing field: {e}")
+            pytest.fail(f"VehicleVehicleCountingService failed to process message due to missing field: {e}")
 
-class TestVehicleCounterProcess:
-    def test_vehicle_counter_process_logging_setup(self):
-        """Test that vehicle_counter_process sets up logging correctly"""
+class TestVehicleVehicleCountingServiceProcess:
+    def test_vehicle_counting_process_logging_setup(self):
+        """Test that vehicle_counting_process sets up logging correctly"""
         config = {
             "counting_lines": [[[0, 750], [1920, 750]]],
             "loguru": {
@@ -224,12 +224,12 @@ class TestVehicleCounterProcess:
         shutdown_event = mp.Event()
         
         # Mock setup_logging to verify it's called
-        with patch('src.traffic_monitor.services.vehicle_counter.setup_logging') as mock_setup:
-            with patch('src.traffic_monitor.services.vehicle_counter.logger') as mock_logger:
+        with patch('src.traffic_monitor.services.vehicle_counting_service.setup_logging') as mock_setup:
+            with patch('src.traffic_monitor.services.vehicle_counting_service.logger') as mock_logger:
                 # Add a None message to shut down the process
                 input_queue.put(None)
                 
-                vehicle_counter_process(config, input_queue, output_queue, shutdown_event)
+                vehicle_counting_process(config, input_queue, output_queue, shutdown_event)
                 
                 # Verify setup_logging was called with loguru config
                 mock_setup.assert_called_once_with(config["loguru"])
@@ -237,8 +237,8 @@ class TestVehicleCounterProcess:
                 # Verify process start logging
                 mock_logger.info.assert_called()
 
-    def test_vehicle_counter_process_handles_empty_queue(self):
-        """Test that vehicle_counter_process handles empty queue gracefully"""
+    def test_vehicle_counting_process_handles_empty_queue(self):
+        """Test that vehicle_counting_process handles empty queue gracefully"""
         config = {
             "counting_lines": [[[0, 750], [1920, 750]]],
             "loguru": {"level": "DEBUG"}
@@ -247,13 +247,13 @@ class TestVehicleCounterProcess:
         output_queue = mp.Queue()
         shutdown_event = mp.Event()
         
-        with patch('src.traffic_monitor.services.vehicle_counter.setup_logging'):
-            with patch('src.traffic_monitor.services.vehicle_counter.logger'):
+        with patch('src.traffic_monitor.services.vehicle_counting_service.setup_logging'):
+            with patch('src.traffic_monitor.services.vehicle_counting_service.logger'):
                 # Set shutdown event immediately
                 shutdown_event.set()
                 
                 # Should exit gracefully without errors
-                vehicle_counter_process(config, input_queue, output_queue, shutdown_event)
+                vehicle_counting_process(config, input_queue, output_queue, shutdown_event)
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"]) 

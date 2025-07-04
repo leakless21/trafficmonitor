@@ -3,7 +3,7 @@ import time
 import cv2
 import multiprocessing as mp
 from unittest.mock import MagicMock, patch
-from src.traffic_monitor.services.frame_grabber import frame_grabber_process
+from src.traffic_monitor.services.frame_capture_service import frame_capture_process
 from src.traffic_monitor.utils.logging_config import setup_logging
 from loguru import logger
 from queue import Full, Empty
@@ -23,33 +23,33 @@ def mock_config():
         "resize_resolution": [640, 480] # Use smaller resolution that fits our mock frame
     }
 
-def test_frame_grabber_process_no_video_source(
+def test_frame_capture_process_no_video_source(
     mock_config
 ):
     """
     Tests handling of missing video source configuration.
     """
-    logger.info("Running test_frame_grabber_process_no_video_source")
-    # This test directly calls frame_grabber_process as it tests early exit before cv2.VideoCapture is called.
+    logger.info("Running test_frame_capture_process_no_video_source")
+    # This test directly calls frame_capture_process as it tests early exit before cv2.VideoCapture is called.
     config = {"camera_id": "test_cam"} # Missing video_source
 
     output_queue = mp.Queue()
     shutdown_event = mp.Event()
 
-    frame_grabber_process(config, output_queue, shutdown_event)
+    frame_capture_process(config, output_queue, shutdown_event)
 
     assert output_queue.empty()
-    logger.info("Finished test_frame_grabber_process_no_video_source")
+    logger.info("Finished test_frame_capture_process_no_video_source")
 
 @patch('cv2.VideoCapture')
-def test_frame_grabber_process_capture_failure(
+def test_frame_capture_process_capture_failure(
     mock_video_capture_class,
     mock_config
 ):
     """
     Tests behavior when video capture fails to open.
     """
-    logger.info("Running test_frame_grabber_process_capture_failure")
+    logger.info("Running test_frame_capture_process_capture_failure")
 
     mock_cap_instance = MagicMock()
     mock_video_capture_class.return_value = mock_cap_instance
@@ -58,14 +58,14 @@ def test_frame_grabber_process_capture_failure(
     output_queue = mp.Queue()
     shutdown_event = mp.Event()
 
-    frame_grabber_process(mock_config, output_queue, shutdown_event)
+    frame_capture_process(mock_config, output_queue, shutdown_event)
 
     assert output_queue.empty()
-    logger.info("Finished test_frame_grabber_process_capture_failure")
+    logger.info("Finished test_frame_capture_process_capture_failure")
 
 @patch('cv2.VideoCapture')
 @patch('cv2.imencode')
-def test_frame_grabber_process_frame_skipping_logic(
+def test_frame_capture_process_frame_skipping_logic(
     mock_imencode,
     mock_video_capture_class,
     mock_config
@@ -73,7 +73,7 @@ def test_frame_grabber_process_frame_skipping_logic(
     """
     Tests that frame skipping logic works correctly by directly controlling the mock.
     """
-    logger.info("Running test_frame_grabber_process_frame_skipping_logic")
+    logger.info("Running test_frame_capture_process_frame_skipping_logic")
 
     # Configure frame skipping
     mock_config["process_every_n_frame"] = 2
@@ -111,7 +111,7 @@ def test_frame_grabber_process_frame_skipping_logic(
     shutdown_event = mp.Event()
 
     # Run the frame grabber process
-    frame_grabber_process(mock_config, output_queue, shutdown_event)
+    frame_capture_process(mock_config, output_queue, shutdown_event)
 
     # Count processed frames
     processed_frames = 0
@@ -128,11 +128,11 @@ def test_frame_grabber_process_frame_skipping_logic(
     # With frame skipping every 2nd frame, we should process frames 1, 3, 5 = 3 frames
     assert processed_frames == 3, f"Expected 3 processed frames, got {processed_frames}"
     logger.info(f"Correctly processed {processed_frames} frames with frame skipping enabled")
-    logger.info("Finished test_frame_grabber_process_frame_skipping_logic")
+    logger.info("Finished test_frame_capture_process_frame_skipping_logic")
 
 @patch('cv2.VideoCapture')
 @patch('cv2.imencode')
-def test_frame_grabber_process_no_frame_skipping(
+def test_frame_capture_process_no_frame_skipping(
     mock_imencode,
     mock_video_capture_class,
     mock_config
@@ -140,7 +140,7 @@ def test_frame_grabber_process_no_frame_skipping(
     """
     Tests that without frame skipping, all frames are processed.
     """
-    logger.info("Running test_frame_grabber_process_no_frame_skipping")
+    logger.info("Running test_frame_capture_process_no_frame_skipping")
 
     # No frame skipping (default)
     mock_config["process_every_n_frame"] = 1
@@ -176,7 +176,7 @@ def test_frame_grabber_process_no_frame_skipping(
     shutdown_event = mp.Event()
 
     # Run the frame grabber process
-    frame_grabber_process(mock_config, output_queue, shutdown_event)
+    frame_capture_process(mock_config, output_queue, shutdown_event)
 
     # Count processed frames
     processed_frames = 0
@@ -190,11 +190,11 @@ def test_frame_grabber_process_no_frame_skipping(
     # Without frame skipping, all 3 frames should be processed
     assert processed_frames == 3, f"Expected 3 processed frames, got {processed_frames}"
     logger.info(f"Correctly processed {processed_frames} frames without frame skipping")
-    logger.info("Finished test_frame_grabber_process_no_frame_skipping")
+    logger.info("Finished test_frame_capture_process_no_frame_skipping")
 
 @patch('cv2.VideoCapture')
 @patch('cv2.imencode')
-def test_frame_grabber_process_queue_full_handling(
+def test_frame_capture_process_queue_full_handling(
     mock_imencode,
     mock_video_capture_class,
     mock_config
@@ -202,7 +202,7 @@ def test_frame_grabber_process_queue_full_handling(
     """
     Tests handling of a full output queue.
     """
-    logger.info("Running test_frame_grabber_process_queue_full_handling")
+    logger.info("Running test_frame_capture_process_queue_full_handling")
 
     mock_cap_instance = MagicMock()
     mock_video_capture_class.return_value = mock_cap_instance
@@ -238,8 +238,8 @@ def test_frame_grabber_process_queue_full_handling(
     output_queue.put({"dummy": "message"})
 
     # Now run the frame grabber process - it should handle the full queue gracefully
-    frame_grabber_process(mock_config, output_queue, shutdown_event)
+    frame_capture_process(mock_config, output_queue, shutdown_event)
 
     # The queue should still have the dummy message (and possibly one more if it fit)
     assert not output_queue.empty()
-    logger.info("Finished test_frame_grabber_process_queue_full_handling") 
+    logger.info("Finished test_frame_capture_process_queue_full_handling") 

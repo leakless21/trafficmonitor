@@ -14,14 +14,14 @@ from ..utils.custom_types import FrameMessage, VehicleDetectionMessage, Detectio
 from ..utils.logging_config import setup_logging
 from ..utils.queue_utils import safe_put, log_queue_stats
 
-class VehicleDetector:
+class VehicleDetectionService:
     """
     Encapsulates the vehicle detection model and its configuration.
     Handles loading the model, setting confidence thresholds, and processing detection results.
     """
     def __init__(self, model_path: str, conf_threshold: float, class_mapping: dict[int, str]):
         """
-        Initializes the VehicleDetector with the specified model, confidence threshold, and class mapping.
+        Initializes the VehicleDetectionService with the specified model, confidence threshold, and class mapping.
 
         Args:
             model_path (str): Path to the YOLO model weights.
@@ -30,14 +30,14 @@ class VehicleDetector:
         """
         try:
             self.model = ultralytics.YOLO(model_path)
-            logger.info(f"[VehicleDetector] YOLO model loaded successfully from: {model_path}")
+            logger.info(f"[VehicleDetectionService] YOLO model loaded successfully from: {model_path}")
         except Exception as e:
-            logger.exception(f"[VehicleDetector] Failed to load YOLO model from {model_path}: {e}")
+            logger.exception(f"[VehicleDetectionService] Failed to load YOLO model from {model_path}: {e}")
             raise # Re-raise the exception to propagate the error
 
         self.conf_threshold = conf_threshold
         self.class_mapping = class_mapping
-        logger.info(f"[VehicleDetector] Initialized with conf_threshold: {conf_threshold}, class_mapping: {class_mapping}")
+        logger.info(f"[VehicleDetectionService] Initialized with conf_threshold: {conf_threshold}, class_mapping: {class_mapping}")
         
     def process_results(self, results) -> list[Detection]:
         """
@@ -87,7 +87,7 @@ class VehicleDetector:
         processed_results = self.process_results(results)
         return processed_results
     
-def vehicle_detector_process(
+def vehicle_detection_process(
         config: Dict[str, Any],
         input_queue: Queue,
         output_queue: Queue,
@@ -98,7 +98,7 @@ def vehicle_detector_process(
     Main process function for the vehicle detection service.
 
     This function continuously reads frames from the input queue, performs vehicle detection
-    using the VehicleDetector, and puts the detection results into the output queue.
+            using the VehicleDetectionService, and puts the detection results into the output queue.
     It gracefully handles shutdown signals and manages queue operations.
 
     Args:
@@ -110,7 +110,7 @@ def vehicle_detector_process(
     setup_logging(config.get("loguru")) # Initialize logging for this process
     process_name = mp.current_process().name
     offline_mode = config.get("offline_mode", False)
-    service_name = config.get("service_name", "VehicleDetector")
+    service_name = config.get("service_name", "VehicleDetectionService")
     logger.info(f"[{process_name}] Vehicle Detector process started.")
 
     try:
@@ -127,10 +127,10 @@ def vehicle_detector_process(
         # Initialize the vehicle detector instance
         try:
             logger.info(f"[{process_name}] Initializing vehicle detector with model: {model_path}, conf_threshold: {conf_threshold}, class_mapping: {class_mapping}")
-            vehicle_detector = VehicleDetector(model_path, conf_threshold, class_mapping)
+            vehicle_detector = VehicleDetectionService(model_path, conf_threshold, class_mapping)
             logger.info(f"[{process_name}] Vehicle detector initialized.")
         except Exception as e:
-            logger.exception(f"[{process_name}] Failed to initialize VehicleDetector: {e}")
+            logger.exception(f"[{process_name}] Failed to initialize VehicleDetectionService: {e}")
             return # Exit if initialization fails
         
         while not shutdown_event.is_set():

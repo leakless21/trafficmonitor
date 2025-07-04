@@ -9,15 +9,15 @@ from queue import Empty
 from traffic_monitor.utils.custom_types import OCRResultMessage
 from .utils.logging_config import setup_logging
 from .utils.minidb import configure_database, init_db
-from .services.distributor import distributor_process
-from .services.frame_grabber import frame_grabber_process
+from .services.event_distribution_service import event_distribution_process
+from .services.frame_capture_service import frame_capture_process
 from .utils.config_loader import load_config
-from .services.vehicle_detector import vehicle_detector_process
-from .services.vehicle_tracker import vehicle_tracker_process
-from .services.lp_detector import lp_detector_process
-from .services.ocr_reader import ocr_reader_process
-from .services.vehicle_counter import vehicle_counter_process
-from .services.visualizer import visualize_process
+from .services.vehicle_detection_service import vehicle_detection_process
+from .services.vehicle_tracking_service import vehicle_tracking_process
+from .services.license_plate_detection_service import license_plate_detection_process
+from .services.text_recognition_service import text_recognition_process
+from .services.vehicle_counting_service import vehicle_counting_process
+from .services.visualization_service import visualization_process
 
 def main():
     logger.info("Starting main supervisor process...")
@@ -47,37 +47,37 @@ def main():
 
     # Build service configurations
     fg_config = config.get("frame_grabber", {})
-    fg_config["service_name"] = "FrameGrabber"
+    fg_config["service_name"] = "FrameCaptureService"
     fg_config["loguru"] = loguru_config
 
     vd_config = config.get("vehicle_detector", {})
-    vd_config["service_name"] = "VehicleDetector"
+    vd_config["service_name"] = "VehicleDetectionService"
     vd_config["loguru"] = loguru_config
 
     vt_config = config.get("vehicle_tracker", {})
-    vt_config["service_name"] = "VehicleTracker"
+    vt_config["service_name"] = "VehicleTrackingService"
     vt_config["class_mapping"] = config["vehicle_detector"]["class_mapping"]
     vt_config["loguru"] = loguru_config
 
     db_config = config.get("database", {})
 
     lp_config = config.get("lp_detector", {})
-    lp_config["service_name"] = "LPDetector"
+    lp_config["service_name"] = "LicensePlateDetectionService"
     lp_config["loguru"] = loguru_config
     lp_config["database"] = db_config
 
     ocr_config = config.get("ocr_reader", {})
-    ocr_config["service_name"] = "OCRReader"
+    ocr_config["service_name"] = "TextRecognitionService"
     ocr_config["loguru"] = loguru_config
     ocr_config["database"] = db_config
 
     vc_config = config.get("vehicle_counter", {})
-    vc_config["service_name"] = "VehicleCounter"
+    vc_config["service_name"] = "VehicleCountingService"
     vc_config["loguru"] = loguru_config
     vc_config["database"] = db_config
 
     vis_config = config.get("visualizer", {})
-    vis_config["service_name"] = "Visualizer"
+    vis_config["service_name"] = "VisualizationService"
     vis_config["loguru"] = loguru_config
     vis_config["database"] = db_config
 
@@ -92,16 +92,16 @@ def main():
     logger.info(f"Queue management mode: {mode_desc}, queue size: {queue_size if queue_size > 0 else 'unbounded'}")
     
     # Create queues with mode-appropriate sizing
-    frame_grabber_output_queue = mp.Queue(maxsize=queue_size)
-    vehicle_detector_output_queue = mp.Queue(maxsize=queue_size)
-    vehicle_tracker_output_queue = mp.Queue(maxsize=queue_size)
-    lp_detector_output_queue = mp.Queue(maxsize=queue_size)
-    ocr_reader_output_queue = mp.Queue(maxsize=queue_size)
-    vehicle_counter_output_queue = mp.Queue(maxsize=queue_size)
-    visualizer_input_queue = mp.Queue(maxsize=queue_size)
+    frame_capture_output_queue = mp.Queue(maxsize=queue_size)
+    vehicle_detection_output_queue = mp.Queue(maxsize=queue_size)
+    vehicle_tracking_output_queue = mp.Queue(maxsize=queue_size)
+    license_plate_detection_output_queue = mp.Queue(maxsize=queue_size)
+    text_recognition_output_queue = mp.Queue(maxsize=queue_size)
+    vehicle_counting_output_queue = mp.Queue(maxsize=queue_size)
+    visualization_input_queue = mp.Queue(maxsize=queue_size)
 
-    lp_detector_input_queue = mp.Queue(maxsize=queue_size)
-    vehicle_counter_input_queue = mp.Queue(maxsize=queue_size)
+    license_plate_detection_input_queue = mp.Queue(maxsize=queue_size)
+    vehicle_counting_input_queue = mp.Queue(maxsize=queue_size)
 
     # Pass offline mode to services that need it
     fg_config["offline_mode"] = offline_mode
@@ -113,14 +113,14 @@ def main():
 
     # Create process configurations
     process_configs = [
-        ("FrameGrabber", frame_grabber_process, (fg_config, frame_grabber_output_queue, shutdown_event)),
-        ("VehicleDetector", vehicle_detector_process, (vd_config, frame_grabber_output_queue, vehicle_detector_output_queue, shutdown_event)),
-        ("VehicleTracker", vehicle_tracker_process, (vt_config, vehicle_detector_output_queue, vehicle_tracker_output_queue, shutdown_event)),
-        ("LPDetector", lp_detector_process, (lp_config, lp_detector_input_queue, lp_detector_output_queue, shutdown_event)),
-        ("OCRReader", ocr_reader_process, (ocr_config, lp_detector_output_queue, ocr_reader_output_queue, shutdown_event)),
-        ("VehicleCounter", vehicle_counter_process, (vc_config, vehicle_counter_input_queue, vehicle_counter_output_queue, shutdown_event)),
-        ("Distributor", distributor_process, (offline_mode, vehicle_tracker_output_queue, [lp_detector_input_queue, vehicle_counter_input_queue, visualizer_input_queue], shutdown_event)),
-        ("Visualizer", visualize_process, (vis_config, visualizer_input_queue, ocr_reader_output_queue, vehicle_counter_output_queue, shutdown_event)),
+        ("FrameCaptureService", frame_capture_process, (fg_config, frame_capture_output_queue, shutdown_event)),
+        ("VehicleDetectionService", vehicle_detection_process, (vd_config, frame_capture_output_queue, vehicle_detection_output_queue, shutdown_event)),
+        ("VehicleTrackingService", vehicle_tracking_process, (vt_config, vehicle_detection_output_queue, vehicle_tracking_output_queue, shutdown_event)),
+        ("LicensePlateDetectionService", license_plate_detection_process, (lp_config, license_plate_detection_input_queue, license_plate_detection_output_queue, shutdown_event)),
+        ("TextRecognitionService", text_recognition_process, (ocr_config, license_plate_detection_output_queue, text_recognition_output_queue, shutdown_event)),
+        ("VehicleCountingService", vehicle_counting_process, (vc_config, vehicle_counting_input_queue, vehicle_counting_output_queue, shutdown_event)),
+        ("EventDistributionService", event_distribution_process, (offline_mode, vehicle_tracking_output_queue, [license_plate_detection_input_queue, vehicle_counting_input_queue, visualization_input_queue], shutdown_event)),
+        ("VisualizationService", visualization_process, (vis_config, visualization_input_queue, text_recognition_output_queue, vehicle_counting_output_queue, shutdown_event)),
     ]
 
     # Start all processes
@@ -160,9 +160,9 @@ def main():
         
         logger.info("Closing queues...")
         queues = [
-            frame_grabber_output_queue, vehicle_detector_output_queue, vehicle_tracker_output_queue,
-            lp_detector_output_queue, ocr_reader_output_queue, vehicle_counter_output_queue,
-            visualizer_input_queue, lp_detector_input_queue, vehicle_counter_input_queue
+            frame_capture_output_queue, vehicle_detection_output_queue, vehicle_tracking_output_queue,
+            license_plate_detection_output_queue, text_recognition_output_queue, vehicle_counting_output_queue,
+            visualization_input_queue, license_plate_detection_input_queue, vehicle_counting_input_queue
         ]
         
         for queue in queues:

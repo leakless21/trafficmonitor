@@ -218,7 +218,7 @@ class TestLoggingReduction:
         for log_msg in captured_logs:
             assert not any(
                 bracket_pattern in log_msg 
-                for bracket_pattern in ["[FrameGrabber]", "[VehicleTracker]", "[Visualizer]"]
+                for bracket_pattern in ["[FrameCaptureService]", "[VehicleTrackingService]", "[VisualizationService]"]
             )
 
 

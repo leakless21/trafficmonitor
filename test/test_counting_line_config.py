@@ -1,5 +1,5 @@
 from unittest.mock import Mock
-from src.traffic_monitor.services.vehicle_counter import Counter
+from src.traffic_monitor.services.vehicle_counting_service import VehicleCountingService
 
 
 def test_counting_line_config_initialization():
@@ -13,7 +13,7 @@ def test_counting_line_config_initialization():
     ]
     
     # This should not raise an exception
-    counter = Counter(counting_lines_config)
+    counter = VehicleCountingService(counting_lines_config)
     
     # Test the initialization with valid frame dimensions
     tracked_objects = []
@@ -31,7 +31,7 @@ def test_counting_line_config_initialization():
 
 def test_counting_line_config_format_detection():
     """Test that the counter can handle different coordinate formats."""
-    counter = Counter([[]])  # Empty config for testing
+    counter = VehicleCountingService([[]])  # Empty config for testing
     
     # Test with relative coordinates (float values 0-1)
     relative_line = [[0.31, 0.22], [0.85, 0.33]]
@@ -46,7 +46,7 @@ def test_counting_line_config_format_detection():
 
 def test_counting_line_config_invalid_format():
     """Test that invalid coordinate formats are handled gracefully."""
-    counter = Counter([[]])
+    counter = VehicleCountingService([[]])
     
     # Test with invalid format (string coordinates)
     invalid_line = [["invalid", "coords"], ["bad", "format"]]

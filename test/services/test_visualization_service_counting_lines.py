@@ -3,34 +3,34 @@ import numpy as np
 import cv2
 from unittest.mock import patch, MagicMock
 
-from src.traffic_monitor.services.visualizer import Visualizer
+from src.traffic_monitor.services.VisualizationService import VisualizationService
 from src.traffic_monitor.utils.custom_types import TrackedVehicleMessage
 from src.traffic_monitor.utils.logging_config import setup_logging
 
 setup_logging()
 
-class TestVisualizerCountingLines:
-    def test_visualizer_counting_lines_initialization(self):
-        """Test that counting lines are properly stored in visualizer config."""
+class TestVisualizationServiceCountingLines:
+    def test_VisualizationService_counting_lines_initialization(self):
+        """Test that counting lines are properly stored in VisualizationService config."""
         config = {
             "counting_lines": [[[0.25, 0.5], [0.75, 0.5]], [[0.125, 0.375], [0.625, 0.875]]],
             "counting_line_color": [0, 255, 255],
             "counting_line_thickness": 3
         }
-        visualizer = Visualizer(config)
+        VisualizationService = VisualizationService(config)
         
-        assert len(visualizer.counting_lines_relative) == 2
-        assert visualizer.counting_line_color == (0, 255, 255)
-        assert visualizer.counting_line_thickness == 3
+        assert len(VisualizationService.counting_lines_relative) == 2
+        assert VisualizationService.counting_line_color == (0, 255, 255)
+        assert VisualizationService.counting_line_thickness == 3
 
-    def test_visualizer_no_counting_lines(self):
-        """Test visualizer works correctly when no counting lines are configured."""
+    def test_VisualizationService_no_counting_lines(self):
+        """Test VisualizationService works correctly when no counting lines are configured."""
         config = {}
-        visualizer = Visualizer(config)
+        VisualizationService = VisualizationService(config)
         
-        assert len(visualizer.counting_lines_relative) == 0
-        assert visualizer.counting_line_color == (0, 255, 255)  # Default yellow
-        assert visualizer.counting_line_thickness == 3  # Default thickness
+        assert len(VisualizationService.counting_lines_relative) == 0
+        assert VisualizationService.counting_line_color == (0, 255, 255)  # Default yellow
+        assert VisualizationService.counting_line_thickness == 3  # Default thickness
 
     def test_draw_counting_lines(self):
         """Test that counting lines are drawn correctly on the frame."""
@@ -39,14 +39,14 @@ class TestVisualizerCountingLines:
             "counting_line_color": [0, 255, 0],  # Green
             "counting_line_thickness": 5
         }
-        visualizer = Visualizer(config)
+        VisualizationService = VisualizationService(config)
         
         # Create a test frame
         test_frame = np.zeros((400, 500, 3), dtype=np.uint8)
         frame_width, frame_height = 500, 400
         
         # Draw counting lines
-        visualizer._draw_counting_lines(test_frame, frame_width, frame_height)
+        VisualizationService._draw_counting_lines(test_frame, frame_width, frame_height)
         
         # Check that line was drawn (pixels along the line should not be black)
         # Line should be at y=200 (50% of 400), from x=125 (25% of 500) to x=375 (75% of 500)
@@ -60,7 +60,7 @@ class TestVisualizerCountingLines:
             "counting_line_color": [255, 0, 0],  # Blue
             "counting_line_thickness": 2
         }
-        visualizer = Visualizer(config)
+        VisualizationService = VisualizationService(config)
         
         # Create test frame message
         test_frame = np.zeros((200, 200, 3), dtype=np.uint8)
@@ -77,7 +77,7 @@ class TestVisualizerCountingLines:
         )
         
         # Process frame
-        result_frame = visualizer.process_frame(frame_msg)
+        result_frame = VisualizationService.process_frame(frame_msg)
         
         # Check that the frame is not all black (counting line should be drawn)
         assert result_frame.shape == (200, 200, 3)
@@ -88,18 +88,18 @@ class TestVisualizerCountingLines:
         """Test different color format parsing for counting lines."""
         # Test BGR list format
         config = {"counting_line_color": [255, 128, 0]}
-        visualizer = Visualizer(config)
-        assert visualizer.counting_line_color == (255, 128, 0)
+        VisualizationService = VisualizationService(config)
+        assert VisualizationService.counting_line_color == (255, 128, 0)
         
         # Test string format
         config = {"counting_line_color": "(0, 255, 128)"}
-        visualizer = Visualizer(config)
-        assert visualizer.counting_line_color == (0, 255, 128)
+        VisualizationService = VisualizationService(config)
+        assert VisualizationService.counting_line_color == (0, 255, 128)
         
         # Test invalid format falls back to default
         config = {"counting_line_color": "invalid"}
-        visualizer = Visualizer(config)
-        assert visualizer.counting_line_color == (255, 255, 255)  # Default white
+        VisualizationService = VisualizationService(config)
+        assert VisualizationService.counting_line_color == (255, 255, 255)  # Default white
 
     def test_multiple_counting_lines(self):
         """Test drawing multiple counting lines."""
@@ -112,14 +112,14 @@ class TestVisualizerCountingLines:
             "counting_line_color": [0, 255, 255],
             "counting_line_thickness": 2
         }
-        visualizer = Visualizer(config)
+        VisualizationService = VisualizationService(config)
         
         # Create test frame (400x500 to make calculations easier)
         test_frame = np.zeros((400, 500, 3), dtype=np.uint8)
         frame_width, frame_height = 500, 400
         
         # Draw counting lines
-        visualizer._draw_counting_lines(test_frame, frame_width, frame_height)
+        VisualizationService._draw_counting_lines(test_frame, frame_width, frame_height)
         
         # Verify that lines were drawn at expected positions
         # Check horizontal line: y=50 (12.5% of 400), x=50-150 (10%-30% of 500)
@@ -136,12 +136,12 @@ class TestVisualizerCountingLines:
             "counting_line_color": [255, 255, 255],
             "counting_line_thickness": 1
         }
-        visualizer = Visualizer(config)
+        VisualizationService = VisualizationService(config)
         
         # Test different frame sizes
         for width, height in [(640, 480), (1920, 1080), (320, 240)]:
             test_frame = np.zeros((height, width, 3), dtype=np.uint8)
-            visualizer._draw_counting_lines(test_frame, width, height)
+            VisualizationService._draw_counting_lines(test_frame, width, height)
             
             # Check that line was drawn at middle height
             middle_y = height // 2

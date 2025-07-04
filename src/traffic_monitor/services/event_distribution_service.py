@@ -6,7 +6,7 @@ from typing import List
 from loguru import logger
 from ..utils.queue_utils import safe_put
 
-def distributor_process(
+def event_distribution_process(
     offline_mode: bool,
     input_queue: Queue,
     output_queues: List[Queue], # It takes a LIST of output queues
