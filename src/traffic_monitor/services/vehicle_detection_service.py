@@ -140,7 +140,11 @@ def vehicle_detection_process(
                 
                 # Check for shutdown signal
                 if frame_message is None:
-                    logger.info(f"[{process_name}] Received shutdown signal.")
+                    logger.info(f"[{process_name}] Received shutdown signal – propagating downstream and exiting")
+                    try:
+                        output_queue.put(None, timeout=1)
+                    except Exception as e:
+                        logger.warning(f"[{service_name}] Failed to propagate shutdown sentinel: {e}")
                     break
                 
                 # Log processing start for debugging

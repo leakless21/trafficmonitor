@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from loguru import logger
 
-from fast_plate_ocr import ONNXPlateRecognizer
+from fast_plate_ocr import LicensePlateRecognizer
 
 # ADD IMPORT INSIDE TRY to avoid if not installed
 try:
@@ -26,11 +26,11 @@ class TextRecognitionService:
         self.conf_threshold = config.get("conf_threshold", 0.5)
 
         if self.backend == "fast_plate_ocr":
-            hub_model_name = config.get("hub_model_name", "global-plates-mobile-vit-v2-model")
+            hub_model_name = config.get("hub_model_name", "cct-s-v1-global-model")
             device = config.get("device", "auto")
 
             try:
-                self.reader = ONNXPlateRecognizer(hub_ocr_model=hub_model_name, device=device)
+                self.reader = LicensePlateRecognizer(hub_ocr_model=hub_model_name, device=device)
                 logger.info(f"[OCRReader] FastPlateOCR initialized with model: {hub_model_name} on device: {device}")
             except Exception as e:
                 logger.error(f"[OCRReader] Failed to initialize FastPlateOCR reader: {e}")
@@ -77,9 +77,8 @@ class TextRecognitionService:
         return plate_image
 
     def _read_plate_fast(self, plate_image: np.ndarray) -> Optional[Tuple[str, float]]:
-        gray_plate = self._preprocess_plate(plate_image)
         try:
-            raw_results = self.reader.run(gray_plate, return_confidence=True)  # type: ignore[attr-defined]
+            raw_results = self.reader.run(plate_image, return_confidence=True)  # type: ignore[attr-defined]
         except Exception as e:
             logger.error(f"Failed to read plate using FastPlateOCR: {e}")
             return None
@@ -182,8 +181,11 @@ def text_recognition_process(config: Dict[str, Any], lp_detector_output_queue: Q
                 continue
 
             if lp_message is None:
-                logger.warning(f"[OCRReader] Received None message, shutting down.")
-                lp_detector_output_queue.put(None)
+                logger.info("[OCRReader] Received shutdown sentinel – propagating downstream and exiting")
+                try:
+                    ocr_reader_output_queue.put(None, timeout=1)
+                except Exception as e:
+                    logger.warning(f"[TextRecognitionService] Failed to propagate shutdown sentinel: {e}")
                 break
 
             jpeg_data = lp_message['frame_data_jpeg']

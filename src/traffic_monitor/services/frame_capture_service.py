@@ -78,7 +78,13 @@ def frame_capture_process(
             frame_counter += 1
             # If frame reading fails, log an error and break the loop
             if not ret:
-                logger.error(f"Failed to read frame from video source: {video_source}")
+                logger.info("End of video stream reached – all frames have been read")
+                # Propagate shutdown sentinel so downstream services know the stream is finished
+                try:
+                    output_queue.put(None, timeout=1)
+                    logger.debug(f"[{service_name}] Sent shutdown sentinel to output queue")
+                except Exception as e:
+                    logger.warning(f"[{service_name}] Could not put shutdown sentinel to output_queue: {e}")
                 break
             
             if (frame_counter - 1) % process_every_n_frame != 0:
@@ -145,6 +151,13 @@ def frame_capture_process(
         # Ensure the video capture object is released when the process exits
         logger.info("Frame grabber process cleaning up and exiting")
         video_capture.release()
+        # Always send a final sentinel in case the loop exited unexpectedly without one
+        try:
+            if not shutdown_event.is_set():
+                output_queue.put(None, timeout=1)
+                logger.debug(f"[{service_name}] Final shutdown sentinel sent from finally block")
+        except Exception as e:
+            logger.trace(f"[{service_name}] Unable to send final sentinel: {e}")
         # Optionally, signal downstream processes about shutdown by putting None to queue
         # This block is commented out as the shutdown signal is managed by shutdown_event.
         # if output_queue and not shutdown_event.is_set():

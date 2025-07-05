@@ -73,9 +73,9 @@ def sample_plate_detection_message():
         "plate_confidence": 0.95
     }
 
-class MockONNXPlateRecognizer:
+class MockLicensePlateRecognizer:
     """
-    A mock ONNXPlateRecognizer to simulate fast_plate_ocr.ONNXPlateRecognizer behavior.
+    A mock LicensePlateRecognizer to simulate fast_plate_ocr.LicensePlateRecognizer behavior.
     """
     def __init__(self, *args, **kwargs):
         pass
@@ -86,7 +86,7 @@ class MockONNXPlateRecognizer:
             return []
         return (["ABC123"], np.array([0.9, 0.8, 0.7, 0.9]))
 
-@patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
+@patch('fast_plate_ocr.LicensePlateRecognizer', new=MockLicensePlateRecognizer)
 def test_ocr_reader_init_success(mock_ocr_config):
     """
     Tests successful initialization of TextRecognitionService.
@@ -97,7 +97,7 @@ def test_ocr_reader_init_success(mock_ocr_config):
     assert reader.conf_threshold == 0.5
     logger.info("Finished test_ocr_reader_init_success")
 
-@patch('fast_plate_ocr.ONNXPlateRecognizer', side_effect=Exception("OCR init error"))
+@patch('fast_plate_ocr.LicensePlateRecognizer', side_effect=Exception("OCR init error"))
 def test_ocr_reader_init_failure(mock_recognizer, mock_ocr_config):
     """
     Tests TextRecognitionService initialization failure.
@@ -111,7 +111,7 @@ def test_ocr_reader_init_failure(mock_recognizer, mock_ocr_config):
         TextRecognitionService(invalid_config)
     logger.info("Finished test_ocr_reader_init_failure")
 
-@patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
+@patch('fast_plate_ocr.LicensePlateRecognizer', new=MockLicensePlateRecognizer)
 def test_ocr_reader_read_plate_success(mock_ocr_config):
     """
     Tests successful plate reading.
@@ -131,7 +131,7 @@ def test_ocr_reader_read_plate_success(mock_ocr_config):
     assert confidence > 0.4  # Above our threshold
     logger.info("Finished test_ocr_reader_read_plate_success")
 
-@patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
+@patch('fast_plate_ocr.LicensePlateRecognizer', new=MockLicensePlateRecognizer)
 def test_ocr_reader_read_plate_no_detection(mock_ocr_config):
     """
     Tests when no plate is detected by the OCR model.
@@ -144,7 +144,7 @@ def test_ocr_reader_read_plate_no_detection(mock_ocr_config):
         assert result is None
     logger.info("Finished test_ocr_reader_read_plate_no_detection")
 
-@patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
+@patch('fast_plate_ocr.LicensePlateRecognizer', new=MockLicensePlateRecognizer)
 def test_ocr_reader_read_plate_low_confidence(mock_ocr_config):
     """
     Tests when plate is detected but confidence is below threshold.
@@ -159,7 +159,7 @@ def test_ocr_reader_read_plate_low_confidence(mock_ocr_config):
         assert result is None
     logger.info("Finished test_ocr_reader_read_plate_low_confidence")
 
-@patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
+@patch('fast_plate_ocr.LicensePlateRecognizer', new=MockLicensePlateRecognizer)
 def test_ocr_reader_read_plate_invalid_format(mock_ocr_config):
     """
     Tests handling of invalid results format from OCR reader.
@@ -174,7 +174,7 @@ def test_ocr_reader_read_plate_invalid_format(mock_ocr_config):
 
 # --- Tests for text_recognition_process ---
 
-@patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
+@patch('fast_plate_ocr.LicensePlateRecognizer', new=MockLicensePlateRecognizer)
 @patch('cv2.imdecode', return_value=np.zeros((100, 100, 3), dtype=np.uint8))
 def test_text_recognition_process_basic_flow(
     mock_imdecode,
@@ -229,7 +229,7 @@ def test_text_recognition_process_basic_flow(
 
     logger.info("Finished test_text_recognition_process_basic_flow")
 
-@patch('fast_plate_ocr.ONNXPlateRecognizer', side_effect=Exception("OCR init error"))
+@patch('fast_plate_ocr.LicensePlateRecognizer', side_effect=Exception("OCR init error"))
 def test_text_recognition_process_init_failure(
     mock_recognizer,
     mock_ocr_config,
@@ -253,7 +253,7 @@ def test_text_recognition_process_init_failure(
     mock_ocr_reader_output_queue.put.assert_called_once_with(None) # Should signal shutdown
     logger.info("Finished test_text_recognition_process_init_failure")
 
-@patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
+@patch('fast_plate_ocr.LicensePlateRecognizer', new=MockLicensePlateRecognizer)
 @patch('cv2.imdecode', return_value=np.zeros((100, 100, 3), dtype=np.uint8))
 def test_text_recognition_process_empty_input_queue(
     mock_imdecode,
@@ -281,7 +281,7 @@ def test_text_recognition_process_empty_input_queue(
     mock_ocr_reader_output_queue.put.assert_not_called() # No OCR results, no shutdown signal from this queue
     logger.info("Finished test_text_recognition_process_empty_input_queue")
 
-@patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
+@patch('fast_plate_ocr.LicensePlateRecognizer', new=MockLicensePlateRecognizer)
 @patch('cv2.imdecode', return_value=np.zeros((100, 100, 3), dtype=np.uint8))
 def test_text_recognition_process_output_queue_full(
     mock_imdecode,
@@ -315,7 +315,7 @@ def test_text_recognition_process_output_queue_full(
     # and then send None to lp_detector_output_queue, but ocr_reader_output_queue won't get None.
     logger.info("Finished test_text_recognition_process_output_queue_full")
 
-@patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
+@patch('fast_plate_ocr.LicensePlateRecognizer', new=MockLicensePlateRecognizer)
 @patch('cv2.imdecode', return_value=np.zeros((100, 100, 3), dtype=np.uint8))
 def test_text_recognition_process_invalid_bbox(
     mock_imdecode,
@@ -349,7 +349,7 @@ def test_text_recognition_process_invalid_bbox(
     mock_ocr_reader_output_queue.put.assert_not_called() # No OCR result should be put
     logger.info("Finished test_text_recognition_process_invalid_bbox")
 
-@patch('fast_plate_ocr.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
+@patch('fast_plate_ocr.LicensePlateRecognizer', new=MockLicensePlateRecognizer)
 @patch('cv2.imdecode', side_effect=Exception("Imdecode error"))
 def test_text_recognition_process_imdecode_failure(
     mock_imdecode,

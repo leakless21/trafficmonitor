@@ -22,7 +22,7 @@ frame_grabber:
   process_every_n_frame: 1 # Increased from 3 to 5 for better real-time performance
 
 vehicle_detector:
-  model_path: "data/models/best(8).pt"
+  model_path: "data/models/vehicle/best.engine"
   conf_threshold: 0.6
   class_mapping:
     0: "bicycle"
@@ -35,7 +35,7 @@ vehicle_detector:
 vehicle_tracker:
   tracker_type: "bytetrack"
   half: true
-  device: "cpu"
+  device: "cuda"
   reid_model_path: None
   evolve_param_dict: None
   per_class: None
@@ -43,7 +43,7 @@ vehicle_tracker:
 loguru:
   # Log level (can be overridden by LOG_LEVEL environment variable)
   # Options: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL
-  level: "TRACE"
+  level: "DEBUG"
 
   # Log format (can be overridden by LOG_FORMAT=json environment variable for structured logging)
   format: "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{process.name: <15}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
@@ -69,15 +69,24 @@ loguru:
   # Suppresses verbose logs from matplotlib, urllib3, requests, PIL
 
 lp_detector:
-  model_path: "data/models/plate_v8n.pt"
-  conf_threshold: 0.65
+  model_path: "data/models/plate/best.engine"
+  conf_threshold: 0.7
 
 ocr_reader:
   backend: "fast_plate_ocr" # fast_plate_ocr or "paddleocr"
   lang: "en" # Language code for PaddleOCR backend
-  use_gpu: false # Whether to enable GPU for PaddleOCR backend
-  hub_model_name: "global-plates-mobile-vit-v2-model"
-  device: "cpu"
+  use_gpu: true # Whether to enable GPU for PaddleOCR backend
+  
+  # FastPlateOCR configuration (using new LicensePlateRecognizer API)
+  # Available models:
+  # - cct-s-v1-global-model: OCR model trained with global plates data (CCT-S variant)
+  # - cct-xs-v1-global-model: OCR model trained with global plates data (CCT-XS variant)
+  # - argentinian-plates-cnn-model: OCR for Argentinian license plates
+  # - argentinian-plates-cnn-synth-model: OCR for Argentinian plates (synthetic + real data)
+  # - european-plates-mobile-vit-v2-model: OCR for European license plates (MobileVIT-2)
+  # - global-plates-mobile-vit-v2-model: OCR for global license plates (+65 countries, MobileVIT-2)
+  hub_model_name: "cct-s-v1-global-model"
+  device: "cuda"
   conf_threshold: 0.7
 
 vehicle_counter:
@@ -100,7 +109,7 @@ visualizer:
   counting_line_color: [0, 255, 255] # Yellow in BGR format
   counting_line_thickness: 3
 
-  save_to_file: false
+  save_to_file: true
   save_path: "data/videos/output/"
   output_fourcc: "mp4v"
 
@@ -162,3 +171,17 @@ database:
     synchronous: "NORMAL" # Balance between safety and performance
     cache_size: -64000 # 64MB cache (negative = KB)
     temp_store: "MEMORY" # Store temporary tables in memory
+
+# Summary Service Configuration
+summary_service:
+  # Enable summary report generation
+  enabled: true
+  
+  # Directory to save summary reports
+  summary_output_dir: "data/reports"
+  
+  # Whether to print summary to console when processing completes
+  print_summary: true
+  
+  # Whether to save detailed JSON report
+  save_detailed_report: true

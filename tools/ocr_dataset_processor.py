@@ -53,13 +53,13 @@ class FastPlateOCREngine(BaseOCREngine):
         self.name = "fast_plate_ocr"
         
         try:
-            from fast_plate_ocr import ONNXPlateRecognizer
+            from fast_plate_ocr import LicensePlateRecognizer
             
-            hub_model_name = config.get("hub_model_name", "global-plates-mobile-vit-v2-model")
+            hub_model_name = config.get("hub_model_name", "cct-s-v1-global-model")
             device = config.get("device", "auto")
             self.conf_threshold = config.get("conf_threshold", 0.5)
             
-            self.reader = ONNXPlateRecognizer(hub_ocr_model=hub_model_name, device=device)
+            self.reader = LicensePlateRecognizer(hub_ocr_model=hub_model_name, device=device)
             logging.info(f"FastPlateOCR initialized with model: {hub_model_name} on device: {device}")
             
         except ImportError:
@@ -68,9 +68,7 @@ class FastPlateOCREngine(BaseOCREngine):
             raise RuntimeError(f"Failed to initialize FastPlateOCR: {e}")
     
     def _preprocess_image(self, image: np.ndarray) -> np.ndarray:
-        """Preprocess image for OCR."""
-        if len(image.shape) == 3:
-            return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        """Preprocess image for OCR (no preprocessing needed for new FastPlateOCR)."""
         return image
     
     def process_image(self, image: np.ndarray) -> Optional[OCRResult]:
@@ -78,8 +76,7 @@ class FastPlateOCREngine(BaseOCREngine):
         start_time = time.time()
         
         try:
-            gray_image = self._preprocess_image(image)
-            raw_results = self.reader.run(gray_image, return_confidence=True)
+            raw_results = self.reader.run(image, return_confidence=True)
             
             if not raw_results or not isinstance(raw_results, tuple) or len(raw_results) != 2:
                 return None
@@ -504,7 +501,7 @@ Examples:
     
     # Add engine-specific configurations
     if args.engine == "fast_plate_ocr":
-        engine_config["hub_model_name"] = "global-plates-mobile-vit-v2-model"
+        engine_config["hub_model_name"] = "cct-s-v1-global-model"
     
     # Process dataset
     try:

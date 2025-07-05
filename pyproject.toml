@@ -1,42 +1,26 @@
 [project]
-authors = [{name = "lkless", email = "leakless21@gmail.com"}]
-name = "traffic_monitor"
-requires-python = "< 3.12"
+name = "trafficmonitor"
 version = "0.1.0"
-dependencies = ["ultralytics>=8.3.135,<9", "onnx>=1.12.0,<1.18.0", "onnxslim>=0.1.53,<0.2", "onnxruntime>=1.22.0,<2", "boxmot>=13.0.9,<14", "pytest>=8.4.0,<9", "shapely>=2.1.1,<3", "pillow>=11.2.1,<12", "progressbar2>=4.5.0,<5", "paddleocr>=3.0.2,<4", "tqdm>=4.66.0,<5", "paddlepaddle>=3.0.0,<4", "fast-plate-ocr[train]>=0.3.0,<0.4", "tf2onnx>=1.16.1,<2", "matplotlib>=3.7.0,<4", "seaborn>=0.12.0,<1", "pandas>=2.0.0,<3", "scikit-learn>=1.3.0,<2", "numpy>=1.24.0", "kaggle>=1.7.4.5,<2", "click>=8.0.0,<9"]
+description = "Traffic Monitor System - Real-time video analytics for traffic monitoring"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.0.0",
+    "loguru>=0.7.0",
+    "opencv-python>=4.5.0",
+    "numpy>=1.21.0",
+    "torch>=1.9.0",
+    "torchvision>=0.10.0",
+    "ultralytics>=8.0.0",
+    "boxmot>=13.0.0",
+    "pyyaml>=6.0",
+    "tqdm>=4.64.0",
+    "onnx>=1.12.0, <1.18.0",
+    "onnxruntime>=1.12.0",
+    "pathlib2>=2.3.0",
+    "shapely>=2.0.0",
+    "tensorrt>=10.12.0.36",
+]
 
 [project.scripts]
 traffic-monitor = "traffic_monitor.cli:main"
-
-[build-system]
-build-backend = "hatchling.build"
-requires = ["hatchling"]
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/traffic_monitor"]
-
-[tool.pixi.workspace]
-channels = ["conda-forge"]
-platforms = ["linux-64", "win-64"]
-
-[tool.pixi.pypi-dependencies]
-traffic_monitor = { path = ".", editable = true }
-
-[tool.pixi.tasks]
-traffic-monitor = "traffic-monitor"
-start = "python -m src.traffic_monitor.main_supervisor"
-batch_crop = "python tools/batch_plate_crop.py"
-paddleocr_csv = "python tools/paddleocr_to_csv.py"
-ocr_dataset = "python tools/ocr_dataset_processor.py"
-ocr_demo = "python examples/ocr_dataset_demo.py"
-ocr_eval = "python tools/ocr_evaluation.py"
-eval_demo = "python examples/evaluation_demo.py"
-ocr_compare = "python tools/comparison_evaluation.py"
-vlpr = "cd VLPR && python synthesis_plate.py"
-
-[tool.pixi.dependencies]
-dill = ">=0.4.0,<0.5"
-loguru = ">=0.7.3,<0.8"
-pip = ">=24.0,<25"
-pyyaml = ">=6.0.2,<7"
-python = ">=3.10,<3.12"

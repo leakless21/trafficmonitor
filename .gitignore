@@ -23,6 +23,7 @@ paddleocr_processing.log
 VLPR/
 create_test_image.py
 examples/
+plate_dataset/
 
 # Python cache and compiled files
 __pycache__/

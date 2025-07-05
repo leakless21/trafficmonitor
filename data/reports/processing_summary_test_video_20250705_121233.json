@@ -1,0 +1,64 @@
+{
+  "summary": {
+    "video_source": "test_video.mp4",
+    "processing_completed_at": "2025-07-05 12:12:33",
+    "total_processing_time": "1.00 seconds",
+    "frames_processed": 10,
+    "processing_fps": "10.00 FPS"
+  },
+  "vehicle_analysis": {
+    "total_detections": 3,
+    "unique_vehicles_tracked": 3,
+    "total_vehicles_counted": 5,
+    "vehicle_counts_by_class": {
+      "car": 3,
+      "truck": 2
+    },
+    "detection_counts_by_class": {
+      "car": 2,
+      "truck": 1
+    }
+  },
+  "license_plate_analysis": {
+    "plates_detected": 1,
+    "plates_successfully_recognized": 1,
+    "ocr_success_rate": "100.0%",
+    "recognized_plates": {
+      "1": "ABC123"
+    }
+  },
+  "performance_metrics": {
+    "processing_duration_seconds": 1.0003721714019775,
+    "average_processing_fps": 9.99627967058044,
+    "total_errors": 0,
+    "error_rate": "0.00%"
+  },
+  "detailed_metrics": {
+    "video_source": "test_video.mp4",
+    "video_duration_seconds": 0.0,
+    "total_frames": 0,
+    "processed_frames": 10,
+    "processing_start_time": 1751692352.513706,
+    "processing_end_time": 1751692353.5140781,
+    "processing_duration_seconds": 1.0003721714019775,
+    "average_fps": 0.0,
+    "frames_per_second_actual": 9.99627967058044,
+    "total_detections": 3,
+    "total_tracked_vehicles": 3,
+    "unique_vehicle_ids": [
+      1,
+      2,
+      3
+    ],
+    "final_vehicle_counts": {
+      "car": 3,
+      "truck": 2
+    },
+    "total_vehicles_counted": 5,
+    "plates_detected": 1,
+    "plates_recognized": 1,
+    "ocr_success_rate": 100.0,
+    "frame_drops": 0,
+    "processing_errors": 0
+  }
+}

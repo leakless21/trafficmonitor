@@ -64,8 +64,8 @@ class TestBaseOCREngine:
             engine.process_image(image)
 
 
-class MockONNXPlateRecognizer:
-    """Mock for ONNXPlateRecognizer."""
+class MockLicensePlateRecognizer:
+    """Mock for LicensePlateRecognizer."""
     
     def __init__(self, *args, **kwargs):
         pass
@@ -80,7 +80,7 @@ class MockONNXPlateRecognizer:
 class TestFastPlateOCREngine:
     """Test FastPlateOCREngine class."""
     
-    @patch('ocr_dataset_processor.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
+    @patch('ocr_dataset_processor.LicensePlateRecognizer', new=MockLicensePlateRecognizer)
     def test_fast_plate_ocr_init_success(self):
         """Test successful FastPlateOCREngine initialization."""
         config = {
@@ -93,7 +93,7 @@ class TestFastPlateOCREngine:
         assert engine.name == "fast_plate_ocr"
         assert engine.conf_threshold == 0.6
     
-    @patch('ocr_dataset_processor.ONNXPlateRecognizer', side_effect=ImportError("Module not found"))
+    @patch('ocr_dataset_processor.LicensePlateRecognizer', side_effect=ImportError("Module not found"))
     def test_fast_plate_ocr_import_error(self, mock_recognizer):
         """Test ImportError handling."""
         config = {}
@@ -101,7 +101,7 @@ class TestFastPlateOCREngine:
         with pytest.raises(ImportError, match="fast_plate_ocr is not installed"):
             FastPlateOCREngine(config)
     
-    @patch('ocr_dataset_processor.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
+    @patch('ocr_dataset_processor.LicensePlateRecognizer', new=MockLicensePlateRecognizer)
     def test_fast_plate_ocr_process_image_success(self):
         """Test successful image processing."""
         config = {"conf_threshold": 0.5}
@@ -119,21 +119,20 @@ class TestFastPlateOCREngine:
         assert result.confidence > 0.5
         assert result.processing_time >= 0
     
-    @patch('ocr_dataset_processor.ONNXPlateRecognizer', new=MockONNXPlateRecognizer)
+    @patch('ocr_dataset_processor.LicensePlateRecognizer', new=MockLicensePlateRecognizer)
     def test_fast_plate_ocr_preprocess_image(self):
-        """Test image preprocessing."""
+        """Test image preprocessing (no preprocessing needed for new API)."""
         config = {}
         engine = FastPlateOCREngine(config)
         
-        # Test color image
+        # Test color image - should return original image
         color_image = np.random.randint(0, 255, (100, 200, 3), dtype=np.uint8)
-        gray = engine._preprocess_image(color_image)
-        assert len(gray.shape) == 2  # Should be grayscale
+        result = engine._preprocess_image(color_image)
+        assert np.array_equal(result, color_image)  # Should be unchanged
         
         # Test already grayscale image
         gray_image = np.random.randint(0, 255, (100, 200), dtype=np.uint8)
         result = engine._preprocess_image(gray_image)
-        assert len(result.shape) == 2
         assert np.array_equal(result, gray_image)
 
 

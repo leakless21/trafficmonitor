@@ -42,7 +42,7 @@ An abstract base class defining the interface for all OCR engines.
 
 #### `FastPlateOCREngine` (scripts/ocr_dataset_processor.py)
 
-Implements the `BaseOCREngine` for FastPlateOCR, an ONNX-based OCR solution.
+Implements the `BaseOCREngine` for FastPlateOCR, an ONNX-based OCR solution using the LicensePlateRecognizer class.
 
 - **Initialization Parameters (from `config`):**
   - `hub_model_name` (str, optional): Model name for FastPlateOCR (default: "global-plates-mobile-vit-v2-model").

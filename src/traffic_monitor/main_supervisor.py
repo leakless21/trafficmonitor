@@ -18,8 +18,18 @@ from .services.license_plate_detection_service import license_plate_detection_pr
 from .services.text_recognition_service import text_recognition_process
 from .services.vehicle_counting_service import vehicle_counting_process
 from .services.visualization_service import visualization_process
+from .services.summary_service import summary_service_process
 
 def main():
+    # Ensure consistent multiprocessing start method across platforms (Linux default is 'fork')
+    try:
+        if mp.get_start_method(allow_none=True) != "spawn":
+            mp.set_start_method("spawn", force=True)
+            logger.debug("Multiprocessing start method set to 'spawn' for cross-platform compatibility")
+    except RuntimeError:
+        # Start method already set elsewhere; proceed
+        pass
+
     logger.info("Starting main supervisor process...")
     shutdown_event = mp.Event()
 
@@ -81,6 +91,49 @@ def main():
     vis_config["loguru"] = loguru_config
     vis_config["database"] = db_config
 
+    # Summary service configuration - include all relevant configs for reporting
+    summary_config = config.get("summary_service", {})
+    summary_config["service_name"] = "SummaryService"
+    summary_config["loguru"] = loguru_config
+    summary_config["video_source"] = fg_config.get("video_source", "Unknown")
+    summary_config["database"] = db_config
+    
+    # Add configuration details from all services for comprehensive reporting
+    summary_config.update({
+        # Frame grabber config
+        "resize_resolution": fg_config.get("resize_resolution"),
+        "process_every_n_frame": fg_config.get("process_every_n_frame"),
+        "offline_mode": offline_mode,
+        
+        # Vehicle detection config
+        "model_path": vd_config.get("model_path"),
+        "conf_threshold": vd_config.get("conf_threshold"),
+        "class_mapping": vd_config.get("class_mapping"),
+        "device": vd_config.get("device", vt_config.get("device")),
+        
+        # Vehicle tracking config
+        "tracker_type": vt_config.get("tracker_type"),
+        "half": vt_config.get("half"),
+        "reid_model_path": vt_config.get("reid_model_path"),
+        
+        # License plate detection config
+        "lp_model_path": lp_config.get("model_path"),
+        
+        # OCR config
+        "backend": ocr_config.get("backend"),
+        "lang": ocr_config.get("lang"),
+        "use_gpu": ocr_config.get("use_gpu"),
+        "hub_model_name": ocr_config.get("hub_model_name"),
+        
+        # Vehicle counting config
+        "counting_lines": vc_config.get("counting_lines"),
+        
+        # Visualization config
+        "save_to_file": vis_config.get("save_to_file"),
+        "save_path": vis_config.get("save_path"),
+        "output_fourcc": vis_config.get("output_fourcc")
+    })
+
     # Import queue utilities for mode-aware queue management
     from .utils.queue_utils import is_offline_mode, get_queue_size_for_mode
     
@@ -102,6 +155,11 @@ def main():
 
     license_plate_detection_input_queue = mp.Queue(maxsize=queue_size)
     vehicle_counting_input_queue = mp.Queue(maxsize=queue_size)
+    
+    # Summary service queues (copy data from other queues for metrics collection)
+    summary_tracking_queue = mp.Queue(maxsize=queue_size)
+    summary_count_queue = mp.Queue(maxsize=queue_size)
+    summary_ocr_queue = mp.Queue(maxsize=queue_size)
 
     # Pass offline mode to services that need it
     fg_config["offline_mode"] = offline_mode
@@ -119,9 +177,18 @@ def main():
         ("LicensePlateDetectionService", license_plate_detection_process, (lp_config, license_plate_detection_input_queue, license_plate_detection_output_queue, shutdown_event)),
         ("TextRecognitionService", text_recognition_process, (ocr_config, license_plate_detection_output_queue, text_recognition_output_queue, shutdown_event)),
         ("VehicleCountingService", vehicle_counting_process, (vc_config, vehicle_counting_input_queue, vehicle_counting_output_queue, shutdown_event)),
-        ("EventDistributionService", event_distribution_process, (offline_mode, vehicle_tracking_output_queue, [license_plate_detection_input_queue, vehicle_counting_input_queue, visualization_input_queue], shutdown_event)),
+        ("EventDistributionService", event_distribution_process, (offline_mode, vehicle_tracking_output_queue, [license_plate_detection_input_queue, vehicle_counting_input_queue, visualization_input_queue, summary_tracking_queue], shutdown_event)),
         ("VisualizationService", visualization_process, (vis_config, visualization_input_queue, text_recognition_output_queue, vehicle_counting_output_queue, shutdown_event)),
     ]
+    
+    # Add summary service if enabled
+    if summary_config.get("enabled", True):
+        # Add additional event distribution processes to send copies to summary service
+        process_configs.extend([
+            ("CountDistributionService", event_distribution_process, (offline_mode, vehicle_counting_output_queue, [summary_count_queue], shutdown_event)),
+            ("OCRDistributionService", event_distribution_process, (offline_mode, text_recognition_output_queue, [summary_ocr_queue], shutdown_event)),
+            ("SummaryService", summary_service_process, (summary_config, summary_tracking_queue, summary_count_queue, summary_ocr_queue, shutdown_event))
+        ])
 
     # Start all processes
     processes = []
@@ -134,10 +201,19 @@ def main():
     try:
         logger.info("All processes started. Press Ctrl+C to quit.")
         while not shutdown_event.is_set():
-            if not all(process.is_alive() for process in processes):
-                logger.error("One or more processes died. Shutting down.")
+            # If any process exited with a non-zero code → treat as error and shut down
+            for process in processes:
+                if process.exitcode not in (None, 0):
+                    logger.error(f"Process {process.name} exited with code {process.exitcode}. Initiating shutdown.")
+                    shutdown_event.set()
+                    break
+
+            # If every child has finished successfully, we're done
+            if all(p.exitcode == 0 for p in processes):
+                logger.info("All child processes finished gracefully. Exiting main loop.")
                 shutdown_event.set()
                 break
+
             time.sleep(0.5)
         logger.info("Main loop finished. Shutting down.")
         shutdown_event.set()
@@ -150,11 +226,11 @@ def main():
         logger.info("Starting cleanup...")
         for process in processes:
             if process.is_alive():
-                process.join(timeout=5)
+                process.join(timeout=10)
             if process.is_alive():
                 logger.warning(f"Process {process.name} did not finish in time. Terminating.")
                 process.terminate()
-                process.join(timeout=2)
+                process.join(timeout=10)
             else:
                 logger.debug(f"Process {process.name} finished cleanly")
         
@@ -162,7 +238,8 @@ def main():
         queues = [
             frame_capture_output_queue, vehicle_detection_output_queue, vehicle_tracking_output_queue,
             license_plate_detection_output_queue, text_recognition_output_queue, vehicle_counting_output_queue,
-            visualization_input_queue, license_plate_detection_input_queue, vehicle_counting_input_queue
+            visualization_input_queue, license_plate_detection_input_queue, vehicle_counting_input_queue,
+            summary_tracking_queue, summary_count_queue, summary_ocr_queue
         ]
         
         for queue in queues:
