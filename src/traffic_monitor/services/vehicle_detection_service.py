@@ -13,6 +13,7 @@ import time
 from ..utils.custom_types import FrameMessage, VehicleDetectionMessage, Detection
 from ..utils.logging_config import setup_logging
 from ..utils.queue_utils import safe_put, log_queue_stats
+from pathlib import Path
 
 class VehicleDetectionService:
     """
@@ -111,6 +112,23 @@ def vehicle_detection_process(
     process_name = mp.current_process().name
     offline_mode = config.get("offline_mode", False)
     service_name = config.get("service_name", "VehicleDetectionService")
+    
+    # Snapshot configuration
+    snapshot_cfg = config.get("debug_snapshots", {})
+    snap_enabled = snapshot_cfg.get("enabled", False)
+    snap_interval = max(1, snapshot_cfg.get("interval", 1))
+    snap_root = Path(snapshot_cfg.get("root_dir", "docs/snaps")) / "02_detect"
+    if snap_enabled:
+        snap_root.mkdir(parents=True, exist_ok=True)
+
+    # Color mapping from visualizer config (fallback to default white)
+    vis_colors_cfg = config.get("visualizer", {}).get("class_colors", {})
+    def _parse_color(val):
+        if isinstance(val, (list, tuple)): return tuple(int(c) for c in val)
+        return (255,255,255)
+    class_colors = {k: _parse_color(v) for k, v in vis_colors_cfg.items()}
+    default_color = _parse_color(config.get("visualizer", {}).get("default_color", [255,255,255]))
+        
     logger.info(f"[{process_name}] Vehicle Detector process started.")
 
     try:
@@ -133,10 +151,12 @@ def vehicle_detection_process(
             logger.exception(f"[{process_name}] Failed to initialize VehicleDetectionService: {e}")
             return # Exit if initialization fails
         
+        processed_frame_count = 0
         while not shutdown_event.is_set():
             try:
                 # Attempt to get a frame message from the input queue with a timeout
                 frame_message: FrameMessage = input_queue.get(timeout=1)
+                processed_frame_count += 1
                 
                 # Check for shutdown signal
                 if frame_message is None:
@@ -161,6 +181,20 @@ def vehicle_detection_process(
                 # Perform vehicle detection on the frame
                 detections = vehicle_detector.detect(frame)
                 
+                # Save snapshot of detected objects if enabled
+                if snap_enabled and (processed_frame_count % snap_interval == 0):
+                    try:
+                        annotated_frame = frame.copy()
+                        for det in detections:
+                            x1, y1, x2, y2 = det["bbox_xyxy"]
+                            color = class_colors.get(det["class_name"], default_color)
+                            label = f'{det["class_name"]} {det["confidence"]:.2f}'
+                            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
+                            cv2.putText(annotated_frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+                        cv2.imwrite(str(snap_root / f"det_{frame_message['frame_id']}.png"), annotated_frame)
+                    except Exception as ss_exc:
+                        logger.warning(f"[{service_name}] Failed to save detection snapshot: {ss_exc}")
+
                 # Enhanced logging with class-specific information
                 if detections:
                     class_counts = {}

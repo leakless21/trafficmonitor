@@ -71,6 +71,17 @@ def frame_capture_process(
     # Configure logging frequency for frames, defaulting to every 30 frames
     log_every_n_frames = config.get("log_every_n_frames", 30)
 
+    # Retrieve optional evaluation options
+    start_time_sec = config.get("start_time_sec", 0)
+    max_frames = config.get("max_frames")  # None means unlimited
+    # If a start time is specified, seek to that position (best-effort)
+    if start_time_sec and isinstance(start_time_sec, (int, float)) and start_time_sec > 0:
+        success_seek = video_capture.set(cv2.CAP_PROP_POS_MSEC, start_time_sec * 1000)
+        if not success_seek:
+            logger.warning(f"Could not seek to start_time_sec={start_time_sec}s (CAP_PROP_POS_MSEC unsupported)")
+        else:
+            logger.info(f"Seeked to {start_time_sec:.2f}s in the video for evaluation mode")
+
     try:
         # Main loop: continue until a shutdown signal is received
         while not shutdown_event.is_set():
@@ -132,6 +143,15 @@ def frame_capture_process(
                     logger.debug(f"[{service_name}] Processed {processed_frame_count} frames. FPS: {actual_fps:.1f}")
                     log_queue_stats(output_queue, service_name, processed_frame_count)
                     last_frame_time = current_time
+
+                # stop after max_frames if specified
+                if max_frames is not None and processed_frame_count >= max_frames:
+                    logger.info(f"Reached max_frames={max_frames}. Stopping frame capture.")
+                    try:
+                        output_queue.put(None, timeout=1)
+                    except Exception as e:
+                        logger.warning(f"[{service_name}] Could not send shutdown sentinel after reaching max_frames: {e}")
+                    break
             else:
                 logger.warning(f"[{service_name}] Failed to put frame {processed_frame_count}")
                 continue

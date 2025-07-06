@@ -17,12 +17,12 @@
 
 frame_grabber:
   video_source: "data/videos/input/IMG_3637.MOV"
-  resize_resolution: [1280, 720]
-  log_every_n_frames: 60 # Log every 30 frames
+  resize_resolution: [1920, 1080]
+  log_every_n_frames: 120 # Log every 30 frames
   process_every_n_frame: 1 # Increased from 3 to 5 for better real-time performance
 
 vehicle_detector:
-  model_path: "data/models/vehicle/best.engine"
+  model_path: "data/models/vehicle/best.pt"
   conf_threshold: 0.6
   class_mapping:
     0: "bicycle"
@@ -43,7 +43,7 @@ vehicle_tracker:
 loguru:
   # Log level (can be overridden by LOG_LEVEL environment variable)
   # Options: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL
-  level: "DEBUG"
+  level: "INFO"
 
   # Log format (can be overridden by LOG_FORMAT=json environment variable for structured logging)
   format: "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{process.name: <15}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
@@ -109,7 +109,7 @@ visualizer:
   counting_line_color: [0, 255, 255] # Yellow in BGR format
   counting_line_thickness: 3
 
-  save_to_file: true
+  save_to_file: true        # write the MP4
   save_path: "data/videos/output/"
   output_fourcc: "mp4v"
 

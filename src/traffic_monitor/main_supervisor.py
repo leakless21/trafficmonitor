@@ -20,7 +20,7 @@ from .services.vehicle_counting_service import vehicle_counting_process
 from .services.visualization_service import visualization_process
 from .services.summary_service import summary_service_process
 
-def main():
+def main(config=None):
     # Ensure consistent multiprocessing start method across platforms (Linux default is 'fork')
     try:
         if mp.get_start_method(allow_none=True) != "spawn":
@@ -35,69 +35,111 @@ def main():
 
     # Use absolute path to ensure it works regardless of working directory
     project_root = Path(__file__).parent.parent.parent
-    config_path = project_root / "src" / "traffic_monitor" / "config" / "settings.yaml"
+    default_config_path = project_root / "src" / "traffic_monitor" / "config" / "settings.yaml"
 
-    config = load_config(config_path)
-    if not config:
+    # -------------------------------------------------------------
+    # Load configuration
+    # -------------------------------------------------------------
+    # "config" may be:
+    #   1. None          -> load the default YAML file
+    #   2. Path / str    -> treat as a path and load YAML from it
+    #   3. dict          -> already-parsed configuration coming from CLI
+    if config is None:
+        config_dict = load_config(default_config_path)
+    elif isinstance(config, (str, Path)):
+        config_dict = load_config(config)
+    else:
+        # Assume it's already a dict
+        config_dict = config
+
+    # Abort if configuration could not be loaded
+    if config_dict is None:
         logger.error("Failed to load configuration. Exiting.")
         return
 
-    loguru_config = config.get("loguru", {})
+    loguru_config = config_dict.get("loguru", {})
     setup_logging(loguru_config)
 
     # Configure and initialize database
-    configure_database(config)
+    configure_database(config_dict) if config_dict else configure_database({})
     init_db()
 
     # Log condensed config info at debug level
     logger.debug("Configuration loaded", 
-                video_source=config.get("frame_grabber", {}).get("video_source"),
-                tracker_type=config.get("vehicle_tracker", {}).get("tracker_type"),
+                video_source=config_dict.get("frame_grabber", {}).get("video_source"),
+                tracker_type=config_dict.get("vehicle_tracker", {}).get("tracker_type"),
                 log_level=loguru_config.get("level", "INFO"))
 
     # Build service configurations
-    fg_config = config.get("frame_grabber", {})
+    fg_config = config_dict.get("frame_grabber", {}) if config_dict else {}
     fg_config["service_name"] = "FrameCaptureService"
     fg_config["loguru"] = loguru_config
 
-    vd_config = config.get("vehicle_detector", {})
+    vd_config = config_dict.get("vehicle_detector", {}) if config_dict else {}
     vd_config["service_name"] = "VehicleDetectionService"
     vd_config["loguru"] = loguru_config
 
-    vt_config = config.get("vehicle_tracker", {})
+    vt_config = config_dict.get("vehicle_tracker", {}) if config_dict else {}
     vt_config["service_name"] = "VehicleTrackingService"
-    vt_config["class_mapping"] = config["vehicle_detector"]["class_mapping"]
+    vt_config["class_mapping"] = config_dict["vehicle_detector"]["class_mapping"] if config_dict else {}
     vt_config["loguru"] = loguru_config
 
-    db_config = config.get("database", {})
+    db_config = config_dict.get("database", {}) if config_dict else {}
 
-    lp_config = config.get("lp_detector", {})
+    lp_config = config_dict.get("lp_detector", {}) if config_dict else {}
     lp_config["service_name"] = "LicensePlateDetectionService"
     lp_config["loguru"] = loguru_config
     lp_config["database"] = db_config
 
-    ocr_config = config.get("ocr_reader", {})
+    ocr_config = config_dict.get("ocr_reader", {}) if config_dict else {}
     ocr_config["service_name"] = "TextRecognitionService"
     ocr_config["loguru"] = loguru_config
     ocr_config["database"] = db_config
 
-    vc_config = config.get("vehicle_counter", {})
+    vc_config = config_dict.get("vehicle_counter", {}) if config_dict else {}
     vc_config["service_name"] = "VehicleCountingService"
     vc_config["loguru"] = loguru_config
     vc_config["database"] = db_config
 
-    vis_config = config.get("visualizer", {})
+    vis_config = config_dict.get("visualizer", {})
     vis_config["service_name"] = "VisualizationService"
     vis_config["loguru"] = loguru_config
     vis_config["database"] = db_config
 
     # Summary service configuration - include all relevant configs for reporting
-    summary_config = config.get("summary_service", {})
+    summary_config = config_dict.get("summary_service", {})
     summary_config["service_name"] = "SummaryService"
     summary_config["loguru"] = loguru_config
     summary_config["video_source"] = fg_config.get("video_source", "Unknown")
     summary_config["database"] = db_config
-    
+
+    # -----------------------------------------------------------------
+    # Ensure both visualizer.save_path and summary_output_dir point to the
+    # SAME session subfolder. When one (or both) are missing, we create
+    # a fresh timestamped directory under data/videos/output.
+    # -----------------------------------------------------------------
+    from datetime import datetime
+    default_output_root = Path("data/videos/output")
+    default_output_root.mkdir(parents=True, exist_ok=True)
+
+    save_path = vis_config.get("save_path")
+    # If save_path is missing or equals the root directory, create subfolder
+    if not save_path or Path(save_path).resolve() == default_output_root.resolve():
+        # Create new session folder
+        session_dir = default_output_root / datetime.now().strftime("%Y%m%d_%H%M%S")
+        session_dir.mkdir(parents=True, exist_ok=True)
+        vis_config["save_path"] = str(session_dir)
+        summary_config.setdefault("summary_output_dir", str(session_dir))
+    else:
+        # save_path already looks like a custom folder; use it for reports as well
+        summary_config.setdefault("summary_output_dir", save_path)
+
+    # -------------------------------------------------------------
+    # Determine processing mode BEFORE adding it into summary config
+    # -------------------------------------------------------------
+    from .utils.queue_utils import is_offline_mode, get_queue_size_for_mode
+    offline_mode = is_offline_mode(vis_config)
+
     # Add configuration details from all services for comprehensive reporting
     summary_config.update({
         # Frame grabber config
@@ -134,11 +176,9 @@ def main():
         "output_fourcc": vis_config.get("output_fourcc")
     })
 
-    # Import queue utilities for mode-aware queue management
-    from .utils.queue_utils import is_offline_mode, get_queue_size_for_mode
-    
-    # Determine processing mode and queue sizes
-    offline_mode = is_offline_mode(vis_config)
+    # -------------------------------------------------------------
+    # Queue sizing based on processing mode
+    # -------------------------------------------------------------
     queue_size = get_queue_size_for_mode(offline_mode)
     
     mode_desc = "offline (preserve all frames)" if offline_mode else "real-time (drop old frames)"

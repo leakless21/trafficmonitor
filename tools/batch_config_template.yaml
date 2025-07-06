@@ -1,0 +1,52 @@
+# -----------------------------------------------------------------------------
+# Batch-processing configuration for tools/batch_run_traffic_monitor.py         
+# -----------------------------------------------------------------------------
+# Copy this file somewhere (e.g. batch_config.yaml) and edit the values below. 
+# The script will read it with  `-c batch_config.yaml` and run Traffic Monitor  
+# sequentially on each listed video.                                             
+# -----------------------------------------------------------------------------
+
+# OPTIONAL: path to the standard Traffic-Monitor settings YAML. If omitted, the
+# script will NOT pass the --config flag and the CLI will use its defaults.
+# Replace with your own file if you maintain multiple configs.
+traffic_monitor_config: config/settings.yaml
+
+# Counting line(s) that will be applied to every video unless overridden in an
+# individual entry below.  Use format "x1,y1,x2,y2" – identical to the CLI.
+# Provide one or more strings, or leave the list empty if you do not need a
+# global default.
+# Example: draw a horizontal line across the centre of a 1280×720 video.
+#   default_count_lines:
+#     - "0,360,1280,360"
+#
+# To disable counting lines globally, keep the list empty (default).
+default_count_lines: []
+
+# Global log level for every CLI run (DEBUG, INFO, WARNING, ERROR).  If this is
+# not set the batch script adds --quiet instead, so you only see high-level
+# output.  Feel free to increase verbosity while debugging.
+log_level: INFO
+
+# -----------------------------------------------------------------------------
+# List the videos to process.  Two forms are supported:                       
+#   1) A simple string – inherits default_count_lines.                        
+#   2) Mapping/object with extra keys:                                        
+#        file:         required path to video                                 
+#        count_lines:  optional list (same format as above)                   
+#                      • omit to inherit default_count_lines                  
+#                      • []  to disable counting lines for that video         
+# -----------------------------------------------------------------------------
+
+videos:
+  # Simple form – uses global default_count_lines
+  - /path/to/video_01.mp4
+
+  # Object form – override counting lines
+  - file: /path/to/video_02.mp4
+    count_lines:
+      - "100,200,400,200"   # Line 1
+      - "100,500,400,500"   # Line 2
+
+  # Object form – disable counting lines for this clip
+  - file: /path/to/video_without_lines.mkv
+    count_lines: [] 

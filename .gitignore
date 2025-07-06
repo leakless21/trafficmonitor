@@ -24,6 +24,7 @@ VLPR/
 create_test_image.py
 examples/
 plate_dataset/
+datasets/
 
 # Python cache and compiled files
 __pycache__/
