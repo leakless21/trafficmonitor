@@ -40,7 +40,8 @@ class VisualizationService:
         self.counting_line_color = self._parse_color(config.get("counting_line_color", [0, 255, 255]))  # Yellow by default
         self.counting_line_thickness = config.get("counting_line_thickness", 3)
         
-        self.latest_ocr_results = {}
+        # key: track_id  -> {"text": str, "confidence": float}
+        self.latest_ocr_results: dict[int, dict] = {}
         self.latest_vehicle_count: VehicleCountMessage | Dict = {}
         self.fps_calculator = deque(maxlen=60)
         
@@ -115,10 +116,9 @@ class VisualizationService:
 
         label = f"{class_name} {track_id}"
         
+        # Always show the most confident plate we have recorded for this track
         if track_id in self.latest_ocr_results:
-            ocr_data = self.latest_ocr_results[track_id]
-            if time.time() - ocr_data["timestamp"] < self.ocr_duration:
-                label += f" {ocr_data['text']}"
+            label += f" {self.latest_ocr_results[track_id]['text']}"
         
         (text_width, text_height), baseline = cv2.getTextSize(label, self.font, self.font_scale, self.font_thickness)
         cv2.rectangle(image, (x1, y1 - text_height - baseline), (x1 + text_width, y1 - baseline), color, cv2.FILLED)
@@ -258,11 +258,16 @@ def visualization_process(config: dict, tracking_queue: Queue, OCR_queue: Queue,
                         ocr_msg: OCRResultMessage = OCR_queue.get_nowait()
                         if ocr_msg:
                             track_id_from_ocr = ocr_msg["vehicle_id"]
-                            visualizer.latest_ocr_results[track_id_from_ocr] = {
-                                "text": ocr_msg["lp_text"],
-                                "timestamp": time.time()
-                            }
-                            logger.trace(f"[Visualizer] Cached OCR result for track {track_id_from_ocr}: {ocr_msg['lp_text']}")
+                            new_conf = ocr_msg["ocr_confidence"]
+                            existing = visualizer.latest_ocr_results.get(track_id_from_ocr)
+                            if existing is None or new_conf > existing.get("confidence", 0):
+                                visualizer.latest_ocr_results[track_id_from_ocr] = {
+                                    "text": ocr_msg["lp_text"],
+                                    "confidence": new_conf
+                                }
+                                logger.debug(f"[Visualizer] Updated plate for track {track_id_from_ocr}: {ocr_msg['lp_text']} (conf={new_conf:.3f})")
+                            else:
+                                logger.trace(f"[Visualizer] Ignored lower-confidence plate for track {track_id_from_ocr}: {ocr_msg['lp_text']} (conf={new_conf:.3f})")
                 except Empty:
                     pass
 
@@ -287,10 +292,13 @@ def visualization_process(config: dict, tracking_queue: Queue, OCR_queue: Queue,
                             ocr_msg: OCRResultMessage = OCR_queue.get_nowait()
                             if ocr_msg:
                                 track_id_from_ocr = ocr_msg["vehicle_id"]
-                                visualizer.latest_ocr_results[track_id_from_ocr] = {
-                                    "text": ocr_msg["lp_text"],
-                                    "timestamp": time.time()
-                                }
+                                new_conf = ocr_msg["ocr_confidence"]
+                                existing = visualizer.latest_ocr_results.get(track_id_from_ocr)
+                                if existing is None or new_conf > existing.get("confidence", 0):
+                                    visualizer.latest_ocr_results[track_id_from_ocr] = {
+                                        "text": ocr_msg["lp_text"],
+                                        "confidence": new_conf
+                                    }
                         except Empty:
                             break
                     

@@ -73,7 +73,8 @@ lp_detector:
   conf_threshold: 0.7
 
 ocr_reader:
-  backend: "fast_plate_ocr" # fast_plate_ocr or "paddleocr"
+  backend: fast_plate_ocr
+  cache_duration_sec: 0.5
   lang: "en" # Language code for PaddleOCR backend
   use_gpu: true # Whether to enable GPU for PaddleOCR backend
   

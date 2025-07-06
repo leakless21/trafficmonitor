@@ -168,6 +168,10 @@ def text_recognition_process(config: Dict[str, Any], lp_detector_output_queue: Q
     # Configure database for this subprocess (inherits path from parent config)
     configure_database(config)
     
+    # Cache to avoid redundant OCR for the same vehicle within a short window
+    cache_duration_sec: float = float(config.get("cache_duration_sec", 2.0))
+    ocr_cache: dict[int, float] = {}  # vehicle_id -> last_ocr_timestamp
+
     process_name = mp.current_process().name
     offline_mode = config.get("offline_mode", False)
     service_name = config.get("service_name", "TextRecognitionService")
@@ -193,10 +197,22 @@ def text_recognition_process(config: Dict[str, Any], lp_detector_output_queue: Q
             x1, y1, x2, y2 = lp_message['plate_bbox_original']
             if x1 >= x2 or y1 >= y2:
                 continue
+
+            # Skip OCR if we recently processed this vehicle
+            vehicle_id = lp_message['vehicle_id']
+            msg_ts = lp_message['timestamp']
+            last_ts = ocr_cache.get(vehicle_id)
+            if last_ts is not None and (msg_ts - last_ts) < cache_duration_sec:
+                logger.trace(f"[OCRReader] Skipping OCR for vehicle {vehicle_id} within cache window ({msg_ts - last_ts:.2f}s)")
+                continue
+
             plate_image = frame[y1:y2, x1:x2]
             ocr_results = ocr_reader.read_plate(plate_image)
             if ocr_results:
                 lp_text, ocr_confidence = ocr_results
+
+                # Update cache on successful read
+                ocr_cache[vehicle_id] = msg_ts
                 ocr_result_message: OCRResultMessage = {
                     "frame_id": lp_message['frame_id'],
                     "camera_id": lp_message['camera_id'],
