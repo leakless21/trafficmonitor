@@ -35,10 +35,10 @@ class LicensePlateDetectionService:
         """
         Finds license plates in the given frame.
         """
-        logger.debug("[LicensePlateDetectionService] Running inference...")
+        logger.info("[LicensePlateDetectionService] Running inference...")
         results = self.model.predict(frame, conf=self.conf_threshold, verbose=False)
         if not results or not results[0].boxes:
-            logger.debug("[LicensePlateDetectionService] No plates found.")
+            logger.info("[LicensePlateDetectionService] No plates found.")
             return None
         best_plate = results[0].boxes[0]
         bbox = best_plate.xyxy[0].tolist()

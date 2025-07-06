@@ -191,6 +191,9 @@ def main(config=None):
     license_plate_detection_output_queue = mp.Queue(maxsize=queue_size)
     text_recognition_output_queue = mp.Queue(maxsize=queue_size)
     vehicle_counting_output_queue = mp.Queue(maxsize=queue_size)
+    # Dedicated queues to ensure the visualiser receives a *copy* of each message
+    vehicle_counting_vis_queue = mp.Queue(maxsize=queue_size)
+    text_recognition_vis_queue = mp.Queue(maxsize=queue_size)
     visualization_input_queue = mp.Queue(maxsize=queue_size)
 
     license_plate_detection_input_queue = mp.Queue(maxsize=queue_size)
@@ -218,15 +221,15 @@ def main(config=None):
         ("TextRecognitionService", text_recognition_process, (ocr_config, license_plate_detection_output_queue, text_recognition_output_queue, shutdown_event)),
         ("VehicleCountingService", vehicle_counting_process, (vc_config, vehicle_counting_input_queue, vehicle_counting_output_queue, shutdown_event)),
         ("EventDistributionService", event_distribution_process, (offline_mode, vehicle_tracking_output_queue, [license_plate_detection_input_queue, vehicle_counting_input_queue, visualization_input_queue, summary_tracking_queue], shutdown_event)),
-        ("VisualizationService", visualization_process, (vis_config, visualization_input_queue, text_recognition_output_queue, vehicle_counting_output_queue, shutdown_event)),
+        ("VisualizationService", visualization_process, (vis_config, visualization_input_queue, text_recognition_vis_queue, vehicle_counting_vis_queue, shutdown_event)),
     ]
     
     # Add summary service if enabled
     if summary_config.get("enabled", True):
         # Add additional event distribution processes to send copies to summary service
         process_configs.extend([
-            ("CountDistributionService", event_distribution_process, (offline_mode, vehicle_counting_output_queue, [summary_count_queue], shutdown_event)),
-            ("OCRDistributionService", event_distribution_process, (offline_mode, text_recognition_output_queue, [summary_ocr_queue], shutdown_event)),
+            ("CountDistributionService", event_distribution_process, (offline_mode, vehicle_counting_output_queue, [summary_count_queue, vehicle_counting_vis_queue], shutdown_event)),
+            ("OCRDistributionService", event_distribution_process, (offline_mode, text_recognition_output_queue, [summary_ocr_queue, text_recognition_vis_queue], shutdown_event)),
             ("SummaryService", summary_service_process, (summary_config, summary_tracking_queue, summary_count_queue, summary_ocr_queue, shutdown_event))
         ])
 
@@ -278,6 +281,7 @@ def main(config=None):
         queues = [
             frame_capture_output_queue, vehicle_detection_output_queue, vehicle_tracking_output_queue,
             license_plate_detection_output_queue, text_recognition_output_queue, vehicle_counting_output_queue,
+            vehicle_counting_vis_queue, text_recognition_vis_queue,
             visualization_input_queue, license_plate_detection_input_queue, vehicle_counting_input_queue,
             summary_tracking_queue, summary_count_queue, summary_ocr_queue
         ]

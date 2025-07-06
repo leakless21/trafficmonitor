@@ -54,7 +54,7 @@ loguru:
 
   # File logging configuration
   file_path: "logs/traffic_monitor.log"
-  file_rotation: "10 MB" # Rotate when file reaches this size
+  file_rotation: "20 MB" # Rotate when file reaches this size
   file_retention: "7 days" # Keep logs for this duration
   file_compression: "zip" # Compress rotated logs
   log_file_overwrite: true # Overwrite existing log file on startup

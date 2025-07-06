@@ -10,7 +10,6 @@ import cv2
 import numpy as np
 import time
 from collections import deque
-import os
 
 from ..utils.custom_types import TrackedVehicleMessage, VehicleCountMessage, OCRResultMessage, TrackedObject
 from ..utils.utils import relative_to_absolute_coords
@@ -137,8 +136,6 @@ class VisualizationService:
         # Draw vehicle counts
         #if self.latest_vehicle_count:
         total = self.latest_vehicle_count.get("total_count", 0)
-        if total > 0 and hash(self.frame_count) % 100 == 0:
-            logger.debug(f"[Visualizer] Drawing stats with total_count={total}")
         by_class = self.latest_vehicle_count.get("class_counts", {})
 
         # Draw total count
@@ -220,61 +217,50 @@ def visualization_process(config: dict, tracking_queue: Queue, OCR_queue: Queue,
         print(f"Failed to setup logging: {e}")
     
     process_name = mp.current_process().name
-
-    # Determine whether GUI display is enabled. Default True but disable automatically
-    # if the environment does not have a DISPLAY (common on headless Linux servers).
-    enable_gui: bool = config.get("enable_gui", True)
-    if enable_gui and not os.environ.get("DISPLAY"):
-        logger.warning("DISPLAY environment variable not found. Running in headless mode (enable_gui=False)")
-        enable_gui = False
-
+    
     try:
-        # If GUI is enabled, verify that we can open a window; otherwise, switch to headless
-        if enable_gui:
-            logger.debug("Testing OpenCV GUI capabilities")
-            test_img = np.zeros((100, 100, 3), dtype=np.uint8)
-            try:
-                cv2.imshow("Traffic Monitor", test_img)
-                cv2.waitKey(1)  # Process window events
-                cv2.destroyWindow("Traffic Monitor")
-                logger.info("OpenCV GUI available - running with window output")
-            except Exception as window_error:
-                logger.warning(f"OpenCV GUI not available: {window_error}. Falling back to headless mode.")
-                enable_gui = False
-
+        # Test OpenCV GUI capabilities
+        logger.debug("Testing OpenCV GUI capabilities")
+        
+        # Check if we can create a window
+        test_img = np.zeros((100, 100, 3), dtype=np.uint8)
+        
+        try:
+            cv2.imshow("Traffic Monitor", test_img)
+            cv2.waitKey(1)  # Process window events
+            logger.info("OpenCV window created successfully")
+        except Exception as window_error:
+            logger.error(f"Failed to create OpenCV window: {window_error}")
+            logger.error("This might indicate a display/GUI environment issue")
+            return
+        
         visualizer = VisualizationService(config)
         logger.info("VisualizationService initialized successfully")
 
         frame_count = 0
         while not shutdown_event.is_set():
+            # Drain OCR and vehicle count queues on EVERY iteration to ensure latest overlays
+            try:
+                while True:
+                    ocr_msg: OCRResultMessage = OCR_queue.get_nowait()
+                    if ocr_msg:
+                        visualizer.latest_ocr_results[ocr_msg["vehicle_id"]] = {
+                            "text": ocr_msg["lp_text"],
+                            "timestamp": time.time()
+                        }
+            except Empty:
+                pass
+            try:
+                while True:
+                    count_msg: VehicleCountMessage = vehicle_count_queue.get_nowait()
+                    if count_msg:
+                        visualizer.latest_vehicle_count = count_msg
+            except Empty:
+                pass
             try:
                 # Use non-blocking get to maintain real-time behavior
                 tracking_msg: TrackedVehicleMessage = tracking_queue.get_nowait()
                 logger.trace(f"Received tracking message for frame: {tracking_msg.get('frame_id', 'unknown')}")
-
-                # NEW: Drain OCR and vehicle count queues on every iteration to keep overlays current
-                try:
-                    while True:
-                        ocr_msg: OCRResultMessage = OCR_queue.get_nowait()
-                        if ocr_msg:
-                            track_id_from_ocr = ocr_msg["vehicle_id"]
-                            visualizer.latest_ocr_results[track_id_from_ocr] = {
-                                "text": ocr_msg["lp_text"],
-                                "timestamp": time.time()
-                            }
-                            logger.trace(f"[Visualizer] Cached OCR result for track {track_id_from_ocr}: {ocr_msg['lp_text']}")
-                except Empty:
-                    pass
-
-                try:
-                    while True:
-                        count_msg: VehicleCountMessage = vehicle_count_queue.get_nowait()
-                        if count_msg:
-                            visualizer.latest_vehicle_count = count_msg
-                            logger.debug(f"[Visualizer] Updated latest vehicle count: total={count_msg['total_count']} class_counts={count_msg['class_counts']}")
-                except Empty:
-                    pass
-                
             except Empty:
                 # No tracking message available, continue processing other queues and check again
                 logger.trace("No tracking message received, continuing")
@@ -314,23 +300,21 @@ def visualization_process(config: dict, tracking_queue: Queue, OCR_queue: Queue,
                 # Process and display the frame
                 logger.trace("Processing frame for display")
                 display_frame = visualizer.process_frame(tracking_msg)
-
-                if enable_gui:
-                    cv2.imshow("Traffic Monitor", display_frame)
-
+                
+                cv2.imshow("Traffic Monitor", display_frame)
+                
                 frame_count += 1
                 if frame_count % 100 == 0:  # Log every 100 frames instead of 30
-                    logger.info(f"Processed {frame_count} frames so far")
+                    logger.info(f"Displayed {frame_count} frames so far")
 
                 # Check for quit signal
-                if enable_gui:
-                    key = cv2.waitKey(1) & 0xFF
-                    if key == ord('q'):
-                        logger.info("Quit signal received (q key)")
-                        shutdown_event.set()
-                        break
-                    elif key != 255:  # Any other key pressed
-                        logger.trace(f"Key pressed: {key}")
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
+                    logger.info("Quit signal received (q key)")
+                    shutdown_event.set()
+                    break
+                elif key != 255:  # Any other key pressed
+                    logger.trace(f"Key pressed: {key}")
                     
             except Exception as frame_error:
                 logger.error(f"Error processing frame: {frame_error}")
@@ -344,8 +328,7 @@ def visualization_process(config: dict, tracking_queue: Queue, OCR_queue: Queue,
         logger.info("Cleaning up visualizer process")
         try:
             visualizer.release()
-            if enable_gui:
-                cv2.destroyAllWindows()
+            cv2.destroyAllWindows()
             logger.debug("OpenCV windows destroyed")
         except Exception as cleanup_error:
             logger.error(f"Error during cleanup: {cleanup_error}")
