@@ -130,10 +130,10 @@ def vehicle_tracking_process(config: Dict[str, Any], input_queue: Queue, output_
         reid_model_path = config.get("reid_model_path", Path("data/models/reid.pt"))
         device = config.get("device", "cpu")
         half = config.get("half", False)
-        per_class = config.get("per_class", None)
+        per_class = config.get("per_class", False)
 
         # Construct the absolute path for tracker_config_path
-        tracker_config_path = Path(__file__).resolve().parent.parent / "config" / "trackers" / f"{tracker_type}.yaml"
+        tracker_config_path = Path("src/traffic_monitor/config/trackers") / f"{config.get('tracker_type', 'bytetrack')}.yaml"
 
         try:
             tracker = VehicleTrackingService(

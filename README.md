@@ -18,6 +18,41 @@ The Traffic Monitor System is a robust, modular, and real-time video analytics a
 - **Data Persistence**: Stores critical data such as plate recognition results and vehicle counts into a lightweight SQLite database, enabling post-analysis and reporting.
 - **Modular and Extensible Design**: Built with a clear project structure and modular components, facilitating easy maintenance, updates, and future enhancements.
 
+## Batch Processing
+
+The batch processing utility enables automated, offline analysis of multiple video files using a YAML configuration. Each video can inherit global settings or override them as needed.
+
+**Minimal Example (`batch_config.yaml`):**
+
+```yaml
+traffic_monitor_config: config/settings.yaml
+default_count_lines:
+  - "100,200,400,200"
+log_level: INFO
+videos:
+  - data/videos/cam_01.mp4
+  - file: data/videos/cam_02.mp4
+    count_lines:
+      - "50,100,600,100"
+      - "50,500,600,500"
+  - file: data/videos/no_lines.mkv
+    count_lines: []
+```
+
+**Run batch processing:**
+
+```bash
+python tools/batch_run_traffic_monitor.py -c batch_config.yaml
+```
+
+The script prints each command before running it for transparency.
+
+**Note:** Requires the `PyYAML` package. Install with:
+
+```bash
+pip install pyyaml
+```
+
 ## Project Structure
 
 ```

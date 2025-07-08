@@ -67,6 +67,30 @@ sequenceDiagram
 
 <!-- The detailed component descriptions follow below -->
 
+### Configuration Loading and Management
+
+**Centralized Configuration Loading:**
+The responsibility for loading the default configuration (`settings.yaml`) is centralized in [`main_supervisor.py`](../src/traffic_monitor/main_supervisor.py). At startup, the supervisor loads the base configuration from an absolute, robust path within the package directory. Any configuration overrides provided via the CLI or interactive prompts are merged into the base configuration using a deep dictionary merge strategy, ensuring nested values are correctly overridden.
+
+**Path Resolution:**
+The supervisor uses `pathlib.Path` and `__file__` to reliably locate the configuration file, regardless of whether the application is run from source or as an installed package.
+
+**Safe Access:**
+All configuration access uses `.get()` with default values to prevent `KeyError` if a section or key is missing.
+
+**CLI Role:**
+[`cli.py`](../src/traffic_monitor/cli.py) is responsible only for collecting user input and passing it as a dictionary to the supervisor; it does not load the default configuration itself.
+
+**Error Handling:**
+If the default configuration cannot be loaded, the supervisor logs a critical error and exits gracefully.
+
+**Summary of Flow:**
+
+1. Supervisor loads default `settings.yaml`.
+2. Supervisor merges CLI/interactive overrides (deep merge).
+3. All components receive a complete, validated configuration dictionary.
+4. Safe access patterns prevent runtime errors due to missing keys.
+
 ### FrameCaptureService Component
 
 **Purpose:** The `FrameCaptureService` component is responsible for ingesting video streams and providing raw frames to downstream components. It also supports optional frame skipping to reduce processing load.
@@ -248,6 +272,10 @@ The system utilizes `multiprocessing.Queue` for inter-process communication betw
 - **Internal:** Built-in `sqlite3` module, `loguru` for logging, `pathlib` for file operations.
 - **External:** None - uses Python standard library only.
 
+## System Components
+
+This section outlines higher-level tools and utilities that orchestrate or evaluate the core processing pipeline.
+
 ### E2E Benchmarking Pipeline
 
 **Purpose:** The E2E (End-to-End) benchmarking system provides comprehensive evaluation of the complete traffic monitoring pipeline, measuring both accuracy and performance metrics for research validation and CI/CD integration.
@@ -311,3 +339,47 @@ The system utilizes `multiprocessing.Queue` for inter-process communication betw
 
 - **Production (`configs/benchmark/prod.yaml`)**: Maximum accuracy, full resolution, all frames
 - **Fast (`configs/benchmark/fast.yaml`)**: Speed optimized, lower resolution, frame skipping
+
+### Batch Processing Utility
+
+**Purpose:** The Batch Processing Utility provides a streamlined way to run the core traffic monitoring pipeline on multiple video files sequentially. It is designed for offline analysis, where a user can define a set of videos and their corresponding configurations in a single YAML file and execute them in one command.
+
+**Relationship with Core Pipeline:**
+
+The batch utility acts as an orchestrator for the main `traffic-monitor` CLI. It parses a batch configuration file and invokes a new CLI process for each video, passing the appropriate parameters. This design decouples the batch logic from the core processing pipeline, ensuring that the main application remains focused on single-source processing.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant BatchRunner as "batch_run_traffic_monitor.py"
+    participant Config as "batch_config.yaml"
+    participant CoreCLI as "traffic-monitor CLI"
+    participant FileSystem as "File System"
+
+    User->>BatchRunner: Executes with --config
+    BatchRunner->>Config: Reads video list and parameters
+    loop For each video in config
+        BatchRunner->>CoreCLI: Invokes with video path and params
+        CoreCLI->>FileSystem: Processes video and writes results
+    end
+```
+
+**Output Directory Structure:**
+
+To maintain organized and traceable results, the batch runner follows a standardized output directory pattern. For each batch execution, a parent directory is created based on the name of the batch configuration file. Inside, subdirectories are created for each processed video.
+
+```
+output/batch_runs/
+└── {batch_config_name}/
+    ├── {video_1_name}/
+    │   ├── results.json
+    │   └── annotated_video.mp4
+    ├── {video_2_name}/
+    │   ├── results.json
+    │   └── annotated_video.mp4
+    └── ...
+```
+
+**Further Documentation:**
+
+For detailed information on configuration, usage, and related scripts, please refer to the component-specific documentation: [`COMPONENT_BATCH_DOCS.md`](docs/COMPONENT_BATCH_DOCS.md).

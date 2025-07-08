@@ -298,6 +298,52 @@ def __init__(self, counting_lines_config: list):
 
 **Proposed Fix**: Adjust queue sizes based on processing stage complexity and add adaptive frame dropping strategies.
 
+## CLI and Configuration
+
+### Configuration Loading Failure in Packaged Execution
+
+**Issue**: When running the application as an installed package (`traffic-monitor`), the command-line interface (`cli.py`) failed to locate the default `settings.yaml` file. It incorrectly resolved the path relative to the installed package location in `.venv`, leading to a `FileNotFoundError`. This caused the configuration dictionary to be empty, resulting in a `KeyError: 'vehicle_detector'` when the main supervisor tried to access necessary configuration keys.
+
+**Affected Files**:
+
+- `src/traffic_monitor/cli.py` ✅ **FIXED**
+- `src/traffic_monitor/main_supervisor.py` ✅ **FIXED**
+
+**Status**: ✅ **RESOLVED** - Refactored the configuration loading logic to be more robust.
+
+**Error Message**:
+
+```
+2025-07-08 15:31:01.396 | ERROR    | traffic_monitor.utils.config_loader:load_config:22 - Config file not found: /home/cetech/trafficmonitor/.venv/lib/python3.11/site-packages/traffic_monitor/config/settings.yaml
+...
+KeyError: 'vehicle_detector'
+```
+
+**Root Cause**: The CLI was responsible for loading the default `settings.yaml`. The path resolution `_Path(__file__).parent / "config" / "settings.yaml"` works in development but fails when the package is installed, as `__file__` points to a location inside `site-packages`.
+
+**Fix Applied**:
+
+1.  **Delegated Default Config Loading**: The CLI (`cli.py`) no longer attempts to load the default `settings.yaml`. It now passes only the user-provided configuration (from `--config` or interactive prompts) to the supervisor.
+2.  **Centralized and Robust Loading in Supervisor**: The `main_supervisor.py` is now solely responsible for loading the default `settings.yaml` using a reliable path. It then performs a deep merge of the user-provided configuration on top of the default settings.
+3.  **Safeguard**: Added a `.get()` with a default empty dictionary to prevent the `KeyError` even if the configuration is somehow still missing a key.
+
+```python
+# In cli.py (simplified logic):
+# No longer loads default config. Passes CLI/interactive options directly.
+final_cfg = config_data
+supervisor_main(config=final_cfg)
+
+# In main_supervisor.py (new robust logic):
+# Always load the default configuration as the base.
+config_dict = load_config(default_config_path)
+if isinstance(config, dict) and config:
+    # Deep merge the dictionary from the CLI.
+    config_dict = _deep_update(config_dict, config)
+
+# Safeguard against missing keys.
+vt_config["class_mapping"] = config_dict.get("vehicle_detector", {}).get("class_mapping", {})
+```
+
 ## Configuration Issues
 
 ### Incorrect YOLO Class Mapping
@@ -870,3 +916,36 @@ LOG_LEVEL=WARNING LOG_FORMAT=json python main.py
 - `ERROR`: Failures requiring attention
 
 ### Missing Logging Setup in Child Processes
+
+## Batch Processing Test Coverage
+
+### Overview
+
+Batch processing is a critical component for handling large volumes of data efficiently. Comprehensive test coverage is required to ensure reliability, correctness, and performance.
+
+### Identified Test Gaps
+
+1. ⚠️ **[BP-1] Missing Edge Case Handling Tests**
+   - No tests for empty input batches, single-item batches, or maximum-size batches.
+2. ⚠️ **[BP-2] Incomplete Concurrency and Parallelism Testing**
+   - Lack of tests for simultaneous batch submissions and race conditions.
+3. ⚠️ **[BP-3] Error Propagation and Recovery**
+   - No tests verifying correct handling of partial failures or batch-level rollback.
+4. ⚠️ **[BP-4] Performance Under Load**
+   - Absence of stress tests for high-throughput scenarios and resource exhaustion.
+5. ⚠️ **[BP-5] Data Integrity Across Batches**
+   - No validation of data consistency when processing overlapping or dependent batches.
+
+### Recommended Test Cases
+
+- Batch with zero items (should not fail, should return empty result)
+- Batch with one item (should process correctly)
+- Batch at maximum allowed size (should process without overflow)
+- Multiple batches submitted in parallel (should not cause data races)
+- Simulated partial failure in batch (should trigger rollback or error reporting)
+- Stress test with sustained high batch submission rate
+- Data integrity check after sequential and parallel batch processing
+
+### Test Implementation Plan
+
+See [`docs/COMPONENT_BATCH_DOCS.md`](docs/COMPONENT_BATCH_DOCS.md) for the detailed test implementation plan, including test case descriptions, expected outcomes, and coverage mapping.

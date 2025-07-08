@@ -29,8 +29,11 @@
 
 ### FR5: Configuration Management
 
-- The system shall load configuration parameters from a YAML file (`settings.yaml`).
+- The system shall load configuration parameters from a YAML file (`settings.yaml`) using a robust, absolute path resolution that works both in development and installed package environments.
 - The system shall allow configuration of video sources, model paths, confidence thresholds, and tracker parameters.
+- The system shall support merging CLI/interactive configuration overrides into the base configuration using a deep dictionary merge, ensuring nested values are correctly overridden.
+- The system shall use safe dictionary access patterns (e.g., `.get()` with defaults) to prevent runtime errors due to missing keys.
+- If the configuration file cannot be loaded, the system shall log a critical error and exit gracefully.
 
 ### FR6: Logging ✅ **IMPLEMENTED**
 
@@ -132,3 +135,29 @@
 - The system shall maintain reproducibility through deterministic configurations and system information logging. ✅
 - The system shall implement ground truth evaluation with temporal matching for vehicle tracking assessment. ✅
 - The system shall provide visual benchmark summaries and GitHub Actions integration for PR/commit gating. ✅
+
+### NFR6: Batch Processing
+
+- The system shall support batch processing of video files and datasets for offline analytics.
+- Batch jobs shall be configurable via YAML files, supporting input/output paths, processing parameters, and resource limits.
+- The batch processing module shall provide progress reporting and error handling for each batch job.
+- The system shall log batch processing results and errors for traceability.
+- See [COMPONENT_BATCH_DOCS.md](./COMPONENT_BATCH_DOCS.md) for detailed batch processing documentation.
+
+---
+
+## Configuration File Format Requirements
+
+- All configuration files shall use the YAML format.
+- Configuration files must be human-readable and support comments.
+- The primary configuration file is `settings.yaml`, which must define all required parameters for system operation.
+- Batch processing jobs must be defined in YAML files specifying input sources, output destinations, and processing options.
+- The system shall validate configuration files on startup and provide clear error messages for invalid or missing fields.
+
+---
+
+## Third-Party Dependencies
+
+- **PyYAML**: Required for parsing YAML configuration files.
+  - Must be compatible with the Python version used by the project.
+  - See [PyYAML documentation](https://pyyaml.org/) for details.

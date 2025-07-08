@@ -41,16 +41,38 @@ def main(config=None):
     # Load configuration
     # -------------------------------------------------------------
     # "config" may be:
-    #   1. None          -> load the default YAML file
-    #   2. Path / str    -> treat as a path and load YAML from it
-    #   3. dict          -> already-parsed configuration coming from CLI
-    if config is None:
-        config_dict = load_config(default_config_path)
-    elif isinstance(config, (str, Path)):
-        config_dict = load_config(config)
-    else:
-        # Assume it's already a dict
-        config_dict = config
+    #   1. A dict with overrides from the CLI.
+    #   2. A path to a YAML file.
+    #   3. None, if no config was specified at all.
+    #
+    # The goal is to always have a base config from settings.yaml and
+    # merge any provided config on top of it.
+
+    # Always load the default configuration as the base
+    config_dict = load_config(default_config_path)
+    if config_dict is None:
+        logger.error("CRITICAL: Default settings.yaml could not be loaded. Exiting.")
+        return
+
+    if isinstance(config, (str, Path)):
+        # If a path was provided, load that config and merge it
+        logger.info(f"Loading config from path: {config}")
+        override_config = load_config(config)
+        if override_config:
+            config_dict.update(override_config) # Simple update, can be improved
+    elif isinstance(config, dict) and config:
+        # If a dict was provided (from CLI), merge it
+        logger.info("Merging CLI/interactive config with defaults.")
+        # A simple update is not enough for nested dicts. We need a deep merge.
+        def _deep_update(dest: dict, src: dict):
+            """Recursively update dict dest with src (src overrides)."""
+            for key, val in src.items():
+                if isinstance(val, dict) and isinstance(dest.get(key), dict):
+                    _deep_update(dest[key], val)
+                else:
+                    dest[key] = val
+            return dest
+        config_dict = _deep_update(config_dict, config)
 
     # Abort if configuration could not be loaded
     if config_dict is None:
@@ -81,7 +103,7 @@ def main(config=None):
 
     vt_config = config_dict.get("vehicle_tracker", {}) if config_dict else {}
     vt_config["service_name"] = "VehicleTrackingService"
-    vt_config["class_mapping"] = config_dict["vehicle_detector"]["class_mapping"] if config_dict else {}
+    vt_config["class_mapping"] = config_dict.get("vehicle_detector", {}).get("class_mapping", {})
     vt_config["loguru"] = loguru_config
 
     db_config = config_dict.get("database", {}) if config_dict else {}

@@ -22,7 +22,7 @@ frame_grabber:
   process_every_n_frame: 1 # Increased from 3 to 5 for better real-time performance
 
 vehicle_detector:
-  model_path: "data/models/vehicle/best.pt"
+  model_path: "data/models/vehicle/best.engine"
   conf_threshold: 0.6
   class_mapping:
     0: "bicycle"
@@ -77,7 +77,7 @@ ocr_reader:
   cache_duration_sec: 0.5
   lang: "en" # Language code for PaddleOCR backend
   use_gpu: true # Whether to enable GPU for PaddleOCR backend
-  
+
   # FastPlateOCR configuration (using new LicensePlateRecognizer API)
   # Available models:
   # - cct-s-v1-global-model: OCR model trained with global plates data (CCT-S variant)
@@ -110,9 +110,10 @@ visualizer:
   counting_line_color: [0, 255, 255] # Yellow in BGR format
   counting_line_thickness: 3
 
-  save_to_file: true        # write the MP4
+  save_to_file: true # write the MP4
   save_path: "data/videos/output/"
   output_fourcc: "mp4v"
+  enable_gui: false
 
   # Queue management mode is automatically determined based on save_to_file:
   # - save_to_file: false -> real-time mode (small queues, drop old frames for low latency)
@@ -177,12 +178,12 @@ database:
 summary_service:
   # Enable summary report generation
   enabled: true
-  
+
   # Directory to save summary reports
   summary_output_dir: "data/reports"
-  
+
   # Whether to print summary to console when processing completes
   print_summary: true
-  
+
   # Whether to save detailed JSON report
   save_detailed_report: true

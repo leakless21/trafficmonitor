@@ -240,14 +240,12 @@ def main(config, verbose, log_level, quiet, mode, source, count_line, start_sec,
                 dest[key] = val
         return dest
 
-    # Determine base configuration (already loaded from --config or default file)
-    if config:
-        base_cfg = deepcopy(config_data)  # config_data already contains the YAML from --config
-    else:
-        default_cfg_path = _Path(__file__).parent / "config" / "settings.yaml"
-        base_cfg = _tm_load_cfg(default_cfg_path) or {}
-
-    final_cfg = _deep_update(base_cfg, config_data)
+    # If a --config file was provided, config_data is already populated.
+    # If not, config_data contains only interactive overrides.
+    # We will pass this directly to the supervisor, which will handle merging
+    # with the default settings.yaml.
+    final_cfg = config_data
+    logger.debug(f"CLI passing config to supervisor: {final_cfg}")
 
     # -------------------------------------------------------------
     # Run supervisor with merged configuration
