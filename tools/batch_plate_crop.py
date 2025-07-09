@@ -49,104 +49,87 @@ def get_image_files(folder_path: str) -> List[Path]:
 def detect_plates(model: YOLO, image: np.ndarray, conf_threshold: float = 0.5) -> List[Tuple[List[int], float]]:
     """Detect license plates in the image and return bounding boxes with confidence scores."""
     results = model.predict(image, conf=conf_threshold, verbose=False)
-    
-    detections = []
-    if results and results[0].boxes is not None:
-        for box in results[0].boxes:
-            bbox = box.xyxy[0].tolist()  # [x1, y1, x2, y2]
-            confidence = box.conf.item()
-            detections.append((bbox, confidence))
-    
+
+    # Fast-path: bulk process all detections if available (avoid Python for-loop overhead if possible)
+    if not results or results[0].boxes is None or len(results[0].boxes) == 0:
+        return []
+
+    boxes = results[0].boxes
+    # Usually: boxes.xyxy is shape [N,4] and boxes.conf is shape [N,1] or [N]
+    bbox_array = boxes.xyxy.cpu().numpy() if hasattr(boxes.xyxy, 'cpu') else np.array([b.xyxy[0] for b in boxes])
+    conf_array = boxes.conf.cpu().numpy() if hasattr(boxes.conf, 'cpu') else np.array([b.conf.item() for b in boxes])
+
+    detections = [
+        (bbox_array[i].tolist(), float(conf_array[i]))
+        for i in range(len(bbox_array))
+    ]
     return detections
 
 def crop_and_convert_plates(image: np.ndarray, detections: List[Tuple[List[int], float]]) -> List[np.ndarray]:
     """Crop detected plates and convert them to grayscale."""
     cropped_plates = []
-    
     for bbox, confidence in detections:
-        x1, y1, x2, y2 = [int(coord) for coord in bbox]
-        
-        # Ensure bounding box is within image bounds
-        height, width = image.shape[:2]
-        x1 = max(0, min(x1, width))
-        y1 = max(0, min(y1, height))
-        x2 = max(0, min(x2, width))
-        y2 = max(0, min(y2, height))
-        
-        # Skip invalid bounding boxes
-        if x2 <= x1 or y2 <= y1:
-            logger.warning(f"Invalid bounding box: [{x1}, {y1}, {x2}, {y2}]")
+        plate_crop = _sanitize_and_crop(image, bbox)
+        if plate_crop is None:
+            logger.warning(f"Invalid or empty crop for bounding box: {bbox}")
             continue
-        
-        # Crop the plate region
-        plate_crop = image[y1:y2, x1:x2]
-        
-        if plate_crop.size == 0:
-            logger.warning(f"Empty crop for bounding box: [{x1}, {y1}, {x2}, {y2}]")
-            continue
-        
-        # Convert to grayscale
-        if len(plate_crop.shape) == 3:  # Color image
+        # Directly convert unless already grayscale
+        if plate_crop.ndim == 3 and plate_crop.shape[2] == 3:
             plate_gray = cv2.cvtColor(plate_crop, cv2.COLOR_BGR2GRAY)
-        else:  # Already grayscale
+        else:
             plate_gray = plate_crop
-        
         cropped_plates.append(plate_gray)
+        # Keep the debug logging, but only for the first few or every nth?
         logger.debug(f"Cropped plate with confidence {confidence:.3f}, size: {plate_gray.shape}")
-    
     return cropped_plates
 
 def process_image(model: YOLO, image_path: Path, output_folder: Path, conf_threshold: float = 0.5) -> int:
     """Process a single image file."""
     try:
-        # Load image
+        # Load image using cv2.IMREAD_GRAYSCALE if desired, here keep as is for color support
         image = cv2.imread(str(image_path))
         if image is None:
             logger.error(f"Failed to load image: {image_path}. Skipping.")
             return 0
-        
+
         # Detect plates
         detections = detect_plates(model, image, conf_threshold)
-        
         if not detections:
             logger.info(f"No plates detected in: {image_path.name}. Skipping.")
             return 0
-        
+
         logger.info(f"Detected {len(detections)} plate(s) in: {image_path.name}")
-        
+
         # Crop and convert plates
         cropped_plates = crop_and_convert_plates(image, detections)
-        
         if not cropped_plates:
             logger.warning(f"No valid plates cropped from: {image_path.name}. This might indicate issues with bounding box coordinates.")
             return 0
-        
-        # Save cropped plates
+
         base_name = image_path.stem
         extension = image_path.suffix
-        
         saved_count = 0
-        for i, plate in enumerate(cropped_plates):
-            if len(cropped_plates) == 1:
-                # Single plate: keep original name
-                output_filename = f"{base_name}{extension}"
-            else:
-                # Multiple plates: add index
-                output_filename = f"{base_name}_plate_{i+1}{extension}"
-            
+        n_plates = len(cropped_plates)
+
+        # Generate all output filenames up front
+        if n_plates == 1:
+            output_filenames = [f"{base_name}{extension}"]
+        else:
+            output_filenames = [f"{base_name}_plate_{i+1}{extension}" for i in range(n_plates)]
+
+        for plate, output_filename in zip(cropped_plates, output_filenames):
             output_path = output_folder / output_filename
-            
             # Save grayscale plate
-            success = cv2.imwrite(str(output_path), plate)
-            if success:
+            # Avoid casting to str redundantly
+            if cv2.imwrite(str(output_path), plate):
                 saved_count += 1
                 logger.debug(f"Saved: {output_path}")
             else:
                 logger.error(f"Failed to save: {output_path}")
-        
+
         logger.info(f"Saved {saved_count} plate(s) from: {image_path.name}")
         return saved_count
-        
+
     except Exception as e:
         logger.error(f"Error processing {image_path}: {e}")
         return 0
@@ -214,6 +197,20 @@ def main():
     except Exception as e:
         logger.error(f"Script failed: {e}")
         sys.exit(1)
+
+def _sanitize_and_crop(image: np.ndarray, bbox: List[int]) -> np.ndarray:
+    # Vectorized bounding box clipping and cropping
+    x1, y1, x2, y2 = np.round(bbox).astype(int)
+
+    height, width = image.shape[:2]
+    x1, x2 = np.clip([x1, x2], 0, width)
+    y1, y2 = np.clip([y1, y2], 0, height)
+    if x2 <= x1 or y2 <= y1:
+        return None
+    crop = image[y1:y2, x1:x2]
+    if crop.size == 0:
+        return None
+    return crop
 
 if __name__ == "__main__":
     main() 
