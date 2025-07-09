@@ -212,43 +212,54 @@ def compute_aggregate_metrics(video_results: List[Dict[str, Any]]) -> Dict[str, 
     """Compute aggregate performance metrics across all videos."""
     if not video_results:
         return {}
-    
-    # Collect timing data
-    all_fps = [r.get("throughput", {}).get("overall_fps", 0) for r in video_results]
-    all_frame_times = [r.get("timing", {}).get("mean_frame_time_ms", 0) for r in video_results]
-    all_p95_times = [r.get("timing", {}).get("p95_frame_time_ms", 0) for r in video_results]
-    
-    # Filter out zeros
-    valid_fps = [fps for fps in all_fps if fps > 0]
-    valid_frame_times = [ft for ft in all_frame_times if ft > 0]
-    valid_p95_times = [p95 for p95 in all_p95_times if p95 > 0]
-    
+
+    valid_fps = []
+    valid_frame_times = []
+    valid_p95_times = []
+
+    for r in video_results:
+        throughput = r.get("throughput")
+        timing = r.get("timing")
+        if throughput:
+            fps = throughput.get("overall_fps", 0)
+            if fps > 0:
+                valid_fps.append(fps)
+        if timing:
+            mean_time = timing.get("mean_frame_time_ms", 0)
+            if mean_time > 0:
+                valid_frame_times.append(mean_time)
+            p95_time = timing.get("p95_frame_time_ms", 0)
+            if p95_time > 0:
+                valid_p95_times.append(p95_time)
+
     aggregate = {}
-    
+
     if valid_fps:
+        lf = len(valid_fps)
         aggregate["fps"] = {
             "mean": statistics.mean(valid_fps),
             "median": statistics.median(valid_fps),
             "min": min(valid_fps),
             "max": max(valid_fps),
-            "std": statistics.stdev(valid_fps) if len(valid_fps) > 1 else 0
+            "std": statistics.stdev(valid_fps) if lf > 1 else 0
         }
-    
+
     if valid_frame_times:
+        lft = len(valid_frame_times)
         aggregate["frame_time_ms"] = {
             "mean": statistics.mean(valid_frame_times),
             "median": statistics.median(valid_frame_times),
             "min": min(valid_frame_times),
             "max": max(valid_frame_times),
-            "std": statistics.stdev(valid_frame_times) if len(valid_frame_times) > 1 else 0
+            "std": statistics.stdev(valid_frame_times) if lft > 1 else 0
         }
-    
+
     if valid_p95_times:
         aggregate["p95_latency_ms"] = {
             "mean": statistics.mean(valid_p95_times),
             "max": max(valid_p95_times)
         }
-    
+
     return aggregate
 
 
