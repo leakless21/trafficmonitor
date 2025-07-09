@@ -28,14 +28,13 @@ from traffic_monitor.utils.profiler import Profiler, get_system_info
 
 class PerformanceCollector:
     """Collects performance metrics during pipeline execution."""
-    
+
     def __init__(self):
         self.frame_times = []
         self.throughput_data = []
         self.start_time = None
         self.end_time = None
         self.total_frames = 0
-        
     def start_collection(self):
         """Start performance data collection."""
         self.start_time = time.time()
@@ -61,25 +60,54 @@ class PerformanceCollector:
     
     def get_metrics(self) -> Dict[str, Any]:
         """Get computed performance metrics."""
+
+        # Early exit if no data
         if not self.frame_times:
             return {}
-            
+
         total_time = self.end_time - self.start_time if self.end_time and self.start_time else 0
-        
+
+        # Sort only once, reuse for median and p95
+        sorted_frame_times = sorted(self.frame_times) if len(self.frame_times) > 1 else self.frame_times
+
         # Frame timing statistics
-        mean_frame_time = statistics.mean(self.frame_times)
-        median_frame_time = statistics.median(self.frame_times)
-        p95_frame_time = sorted(self.frame_times)[int(0.95 * len(self.frame_times))] if len(self.frame_times) > 1 else self.frame_times[0]
+        mean_frame_time = self._fast_mean(self.frame_times)
+        median_frame_time = (
+            self._fast_median(sorted_frame_times)
+            if len(self.frame_times) > 1
+            else self.frame_times[0]
+        )
+        p95_index = int(0.95 * len(sorted_frame_times))
+        if p95_index >= len(sorted_frame_times):
+            p95_index = len(sorted_frame_times) - 1
+        p95_frame_time = (
+            sorted_frame_times[p95_index]
+            if len(sorted_frame_times) > 1
+            else self.frame_times[0]
+        )
         min_frame_time = min(self.frame_times)
         max_frame_time = max(self.frame_times)
-        
+
         # Throughput statistics
         overall_fps = self.total_frames / total_time if total_time > 0 else 0
         mean_fps = 1.0 / mean_frame_time if mean_frame_time > 0 else 0
-        
+
         # Throughput stability
-        throughput_std = statistics.stdev(self.throughput_data) if len(self.throughput_data) > 1 else 0
-        
+        throughput_std = (
+            self._fast_stdev(self.throughput_data)
+            if len(self.throughput_data) > 1
+            else 0
+        )
+
+        # Only compute min/max throughput if data exists
+        if self.throughput_data:
+            peak_fps = max(self.throughput_data)
+            min_fps = min(self.throughput_data)
+        else:
+            peak_fps = 0
+            min_fps = 0
+
+        # Compose the result dict
         return {
             "timing": {
                 "total_time_seconds": total_time,
@@ -88,21 +116,53 @@ class PerformanceCollector:
                 "median_frame_time_ms": median_frame_time * 1000,
                 "p95_frame_time_ms": p95_frame_time * 1000,
                 "min_frame_time_ms": min_frame_time * 1000,
-                "max_frame_time_ms": max_frame_time * 1000
+                "max_frame_time_ms": max_frame_time * 1000,
             },
             "throughput": {
                 "overall_fps": overall_fps,
                 "mean_fps": mean_fps,
-                "peak_fps": max(self.throughput_data) if self.throughput_data else 0,
-                "min_fps": min(self.throughput_data) if self.throughput_data else 0,
-                "fps_stability_std": throughput_std
+                "peak_fps": peak_fps,
+                "min_fps": min_fps,
+                "fps_stability_std": throughput_std,
             },
             "efficiency": {
                 "frames_per_second": overall_fps,
                 "ms_per_frame": mean_frame_time * 1000,
-                "realtime_factor": overall_fps / 30.0 if overall_fps > 0 else 0  # Assuming 30fps video
-            }
+                "realtime_factor": overall_fps / 30.0 if overall_fps > 0 else 0,  # Assuming 30fps video
+            },
         }
+
+    def _fast_mean(self, data):
+        # Avoids statistics.mean overhead for simple lists
+        return sum(data) / len(data)
+
+    def _fast_median(self, data):
+        # Avoids statistics.median overhead for simple lists
+        n = len(data)
+        if n == 0:
+            raise ValueError("No median for empty data")
+        s = sorted(data)
+        mid = n // 2
+        if n % 2 == 0:
+            return (s[mid - 1] + s[mid]) / 2
+        else:
+            return s[mid]
+
+    def _fast_stdev(self, data):
+        # Avoids statistics.stdev overhead for simple lists, assumes n > 1
+        n = len(data)
+        if n < 2:
+            return 0
+        mean = self._fast_mean(data)
+        ssq = sum((x - mean) ** 2 for x in data)
+        return (ssq / (n - 1)) ** 0.5
+
+    def _sorted_select(self, data, p):
+        # Fast percentiles, keep a sorted copy after median computation
+        idx = int(p * len(data))
+        if idx >= len(data):
+            idx = len(data) - 1
+        return data[idx]
 
 
 class MockPerformancePipeline:
