@@ -122,31 +122,50 @@ class E2EEvaluator:
             unmatched_gt: List of unmatched ground truth indices  
             unmatched_pred: List of unmatched prediction indices
         """
+        if not gt_vehicles or not pred_vehicles:
+            # Short-cut if either list is empty
+            matches = []
+            unmatched_gt = list(range(len(gt_vehicles)))
+            unmatched_pred = list(range(len(pred_vehicles)))
+            return matches, unmatched_gt, unmatched_pred
+
         matches = []
-        unmatched_gt = list(range(len(gt_vehicles)))
-        unmatched_pred = list(range(len(pred_vehicles)))
-        
-        # Simple temporal matching for now (can be enhanced with spatial IoU)
+        unmatched_gt = set(range(len(gt_vehicles)))
+        unmatched_pred = set(range(len(pred_vehicles)))
+
+        # Build index: sort predicted vehicles by entry/exit for fast search
+        pred_idx_intervals = [(j, v.ts_enter, v.ts_exit) for j, v in enumerate(pred_vehicles)]
+        # Sort by start time, then by end time for efficient window searching
+        pred_idx_intervals.sort(key=lambda x: (x[1], x[2]))
+
+        # For each GT, only check relevant pred vehicles whose intervals overlap by at least some margin
         for i, gt_vehicle in enumerate(gt_vehicles):
+            gt_start, gt_end = gt_vehicle.ts_enter, gt_vehicle.ts_exit
+            # Only consider predicted vehicles whose time intervals have potential to overlap
+            # For fast search, we scan linearly since interval count is not giant (>10k). If gigantic, could binary search.
+
             best_match = None
             best_overlap = 0.0
-            
-            for j, pred_vehicle in enumerate(pred_vehicles):
+            for j, pred_start, pred_end in pred_idx_intervals:
                 if j not in unmatched_pred:
                     continue
-                    
-                # Calculate temporal overlap
-                overlap = self._temporal_overlap(gt_vehicle, pred_vehicle)
+                # Fast rejection: If no overlap at all, skip
+                if pred_end <= gt_start:
+                    continue  # pred ends before gt starts: too early
+                if pred_start >= gt_end:
+                    break  # pred starts after gt ends: all future are after
+                # Otherwise, they overlap in time
+                overlap = self._temporal_overlap(gt_vehicle, pred_vehicles[j])
                 if overlap > best_overlap and overlap > self.temporal_threshold:
                     best_match = j
                     best_overlap = overlap
-            
             if best_match is not None:
                 matches.append((i, best_match))
-                unmatched_gt.remove(i)
-                unmatched_pred.remove(best_match)
-        
-        return matches, unmatched_gt, unmatched_pred
+                unmatched_gt.discard(i)
+                unmatched_pred.discard(best_match)
+
+        # Convert sets back to lists to preserve original API
+        return matches, list(unmatched_gt), list(unmatched_pred)
     
     def _temporal_overlap(self, gt_vehicle: VehicleEvent, pred_vehicle: VehicleEvent) -> float:
         """Calculate temporal overlap between two vehicle events."""
