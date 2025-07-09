@@ -64,7 +64,6 @@ class EvaluationMetrics:
 
 class E2EEvaluator:
     """End-to-end evaluator for the traffic monitoring system."""
-    
     def __init__(self, iou_threshold: float = 0.5, temporal_threshold: float = 1.0):
         """
         Initialize evaluator.
@@ -122,30 +121,70 @@ class E2EEvaluator:
             unmatched_gt: List of unmatched ground truth indices  
             unmatched_pred: List of unmatched prediction indices
         """
+        num_gt = len(gt_vehicles)
+        num_pred = len(pred_vehicles)
+
         matches = []
-        unmatched_gt = list(range(len(gt_vehicles)))
-        unmatched_pred = list(range(len(pred_vehicles)))
-        
-        # Simple temporal matching for now (can be enhanced with spatial IoU)
-        for i, gt_vehicle in enumerate(gt_vehicles):
-            best_match = None
-            best_overlap = 0.0
-            
-            for j, pred_vehicle in enumerate(pred_vehicles):
-                if j not in unmatched_pred:
-                    continue
-                    
-                # Calculate temporal overlap
-                overlap = self._temporal_overlap(gt_vehicle, pred_vehicle)
-                if overlap > best_overlap and overlap > self.temporal_threshold:
-                    best_match = j
-                    best_overlap = overlap
-            
-            if best_match is not None:
-                matches.append((i, best_match))
-                unmatched_gt.remove(i)
-                unmatched_pred.remove(best_match)
-        
+        unmatched_gt = []
+        unmatched_pred_mask = np.ones(num_pred, dtype=bool)  # True if unmatched
+
+        # Pre-extract enter/exit times to numpy arrays for batch computation
+        gt_enters = np.empty(num_gt)
+        gt_exits = np.empty(num_gt)
+        for i, v in enumerate(gt_vehicles):
+            gt_enters[i] = v.ts_enter
+            gt_exits[i] = v.ts_exit
+        pred_enters = np.empty(num_pred)
+        pred_exits = np.empty(num_pred)
+        for i, v in enumerate(pred_vehicles):
+            pred_enters[i] = v.ts_enter
+            pred_exits[i] = v.ts_exit
+
+        for gt_idx in range(num_gt):
+            gt_start = gt_enters[gt_idx]
+            gt_end = gt_exits[gt_idx]
+
+            if not unmatched_pred_mask.any():
+                break  # No more candidates!
+
+            # Only consider currently unmatched predictions whose intervals overlap with this GT vehicle
+            # Find for all unmatched_pred: pred_exit >= gt_start and pred_enter <= gt_end
+            candidate_mask = unmatched_pred_mask & (pred_exits >= gt_start) & (pred_enters <= gt_end)
+            if not candidate_mask.any():
+                unmatched_gt.append(gt_idx)
+                continue
+
+            # Compute intersection and union for candidates
+            candidates_idx = np.flatnonzero(candidate_mask)
+            p_ents = pred_enters[candidates_idx]
+            p_exits = pred_exits[candidates_idx]
+
+            inter_start = np.maximum(gt_start, p_ents)
+            inter_end = np.minimum(gt_end, p_exits)
+            intersection = np.maximum(0, inter_end - inter_start)
+            union = np.maximum(gt_end, p_exits) - np.minimum(gt_start, p_ents)
+            temporal_overlaps = np.divide(intersection, union, out=np.zeros_like(intersection), where=union > 0)
+
+            # Find the best matched candidate above threshold
+            above_thresh_idx = np.where(temporal_overlaps > self.temporal_threshold)[0]
+            if above_thresh_idx.size == 0:
+                unmatched_gt.append(gt_idx)
+                continue
+
+            # Best overlap among those above threshold
+            best_cand_rel_idx = above_thresh_idx[np.argmax(temporal_overlaps[above_thresh_idx])]
+            best_pred_idx = candidates_idx[best_cand_rel_idx]
+
+            matches.append((gt_idx, best_pred_idx))
+            unmatched_pred_mask[best_pred_idx] = False
+
+        # Remaining unmatched_gt
+        # (already added unmatched GTs for which no pred is above threshold)
+        # Now, add those GTs we never matched (i.e., not already in matches)
+        matched_gt_indices = {m[0] for m in matches}
+        unmatched_gt.extend(i for i in range(num_gt) if i not in matched_gt_indices and i not in unmatched_gt)
+
+        unmatched_pred = [i for i, unmatched in enumerate(unmatched_pred_mask) if unmatched]
         return matches, unmatched_gt, unmatched_pred
     
     def _temporal_overlap(self, gt_vehicle: VehicleEvent, pred_vehicle: VehicleEvent) -> float:
@@ -184,35 +223,35 @@ class E2EEvaluator:
     def evaluate_plate_recognition(self, gt_vehicles: List[VehicleEvent], pred_vehicles: List[VehicleEvent]) -> Dict[str, float]:
         """Evaluate license plate recognition performance."""
         matches, _, _ = self.match_vehicles(gt_vehicles, pred_vehicles)
-        
+
         plate_correct = 0
         plate_total = 0
         gt_with_plates = 0
         pred_with_plates = 0
-        
+
         # Count ground truth vehicles with plates
         for vehicle in gt_vehicles:
             if vehicle.plate is not None:
                 gt_with_plates += 1
-        
+
         # Evaluate matched vehicles
         for gt_idx, pred_idx in matches:
             gt_vehicle = gt_vehicles[gt_idx]
             pred_vehicle = pred_vehicles[pred_idx]
-            
+
             if gt_vehicle.plate is not None:
                 plate_total += 1
                 if pred_vehicle.plate is not None and pred_vehicle.plate == gt_vehicle.plate:
                     plate_correct += 1
-            
+
             if pred_vehicle.plate is not None:
                 pred_with_plates += 1
-        
+
         # Calculate plate-specific metrics
         plate_precision = plate_correct / pred_with_plates if pred_with_plates > 0 else 0.0
-        plate_recall = plate_correct / gt_with_plates if gt_with_plates > 0 else 0.0  
+        plate_recall = plate_correct / gt_with_plates if gt_with_plates > 0 else 0.0
         plate_f1 = 2 * plate_precision * plate_recall / (plate_precision + plate_recall) if (plate_precision + plate_recall) > 0 else 0.0
-        
+
         return {
             'precision': plate_precision,
             'recall': plate_recall,
