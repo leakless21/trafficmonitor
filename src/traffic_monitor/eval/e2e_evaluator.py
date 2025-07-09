@@ -64,7 +64,6 @@ class EvaluationMetrics:
 
 class E2EEvaluator:
     """End-to-end evaluator for the traffic monitoring system."""
-    
     def __init__(self, iou_threshold: float = 0.5, temporal_threshold: float = 1.0):
         """
         Initialize evaluator.
@@ -226,17 +225,19 @@ class E2EEvaluator:
         """Evaluate vehicle counting performance."""
         gt_count = len(gt_vehicles)
         pred_count = len(pred_vehicles)
-        
-        mae = abs(gt_count - pred_count)
-        rmse = (gt_count - pred_count) ** 2
-        smape = 2 * abs(gt_count - pred_count) / (gt_count + pred_count) * 100 if (gt_count + pred_count) > 0 else 0.0
-        
+        diff = gt_count - pred_count
+        abs_diff = abs(diff)
+        sum_count = gt_count + pred_count
+
+        # Precompute reused variables, reduce arithmetic in branching
+        smape = (2 * abs_diff * 100 / sum_count) if sum_count > 0 else 0.0
+
         return {
-            'mae': mae,
-            'rmse': rmse,
+            'mae': abs_diff,
+            'rmse': diff * diff,
             'smape': smape,
             'gt_count': gt_count,
-            'pred_count': pred_count
+            'pred_count': pred_count,
         }
     
     def evaluate_queue_length(self, gt_queue: List[QueueEvent], pred_queue: List[QueueEvent]) -> Dict[str, float]:
