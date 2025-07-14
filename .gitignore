@@ -37,7 +37,7 @@ __pycache__/
 *.onnx
 *.weights
 *.bin
-
+data/merged_dataset/
 # Log files
 *.log
 traffic_monitor_log.txt

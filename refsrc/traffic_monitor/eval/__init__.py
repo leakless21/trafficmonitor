@@ -1,1 +1,0 @@
-# Evaluation package for E2E benchmarking 

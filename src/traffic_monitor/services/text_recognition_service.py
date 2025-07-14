@@ -175,6 +175,8 @@ def text_recognition_process(config: Dict[str, Any], lp_detector_output_queue: Q
     process_name = mp.current_process().name
     offline_mode = config.get("offline_mode", False)
     service_name = config.get("service_name", "TextRecognitionService")
+    min_plate_width: int = int(config.get("min_plate_width", 20))
+    min_plate_height: int = int(config.get("min_plate_height", 10))
     logger.info(f"[TextRecognitionService] Process {process_name} started")
     try:
         ocr_reader = TextRecognitionService(config)
@@ -198,8 +200,17 @@ def text_recognition_process(config: Dict[str, Any], lp_detector_output_queue: Q
             if x1 >= x2 or y1 >= y2:
                 continue
 
-            # Skip OCR if we recently processed this vehicle
+            # Identify vehicle early for logging
             vehicle_id = lp_message['vehicle_id']
+
+            # Skip OCR for plates that are below minimum size thresholds
+            plate_width = x2 - x1
+            plate_height = y2 - y1
+            if plate_width < min_plate_width or plate_height < min_plate_height:
+                logger.trace(f"[OCRReader] Skipping OCR for vehicle {vehicle_id} due to small plate size ({plate_width}x{plate_height})")
+                continue
+
+            # Skip OCR if we recently processed this vehicle
             msg_ts = lp_message['timestamp']
             last_ts = ocr_cache.get(vehicle_id)
             if last_ts is not None and (msg_ts - last_ts) < cache_duration_sec:

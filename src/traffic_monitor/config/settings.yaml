@@ -22,8 +22,8 @@ frame_grabber:
   process_every_n_frame: 1 # Increased from 3 to 5 for better real-time performance
 
 vehicle_detector:
-  model_path: "data/models/vehicle/best.engine"
-  conf_threshold: 0.6
+  model_path: "data/models/vehicle/8n/best.engine"
+  conf_threshold: 0.65
   class_mapping:
     0: "bicycle"
     1: "bike"
@@ -69,7 +69,7 @@ loguru:
   # Suppresses verbose logs from matplotlib, urllib3, requests, PIL
 
 lp_detector:
-  model_path: "data/models/plate/best.engine"
+  model_path: "data/models/plate/5nu/best.engine"
   conf_threshold: 0.7
 
 ocr_reader:

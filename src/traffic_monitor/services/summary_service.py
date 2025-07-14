@@ -227,7 +227,7 @@ class SummaryService:
         """Record OCR results."""
         vehicle_id = ocr_message.get("vehicle_id")
         lp_text = ocr_message.get("lp_text", "")
-        confidence = ocr_message.get("confidence", 0.0)
+        confidence = ocr_message.get("ocr_confidence", 0.0)
         
         if vehicle_id:
             self.ocr_results[vehicle_id] = {
