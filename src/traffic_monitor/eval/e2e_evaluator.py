@@ -8,9 +8,16 @@ against ground truth and computing system-level metrics.
 import json
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from loguru import logger
+from bisect import bisect_left
+"""
+End-to-End Evaluation Logic for Traffic Monitor Benchmark.
+
+This module evaluates the complete pipeline by matching predicted events
+against ground truth and computing system-level metrics.
+"""
 
 
 @dataclass
@@ -122,30 +129,52 @@ class E2EEvaluator:
             unmatched_gt: List of unmatched ground truth indices  
             unmatched_pred: List of unmatched prediction indices
         """
+
+        if not gt_vehicles or not pred_vehicles:
+            return [], list(range(len(gt_vehicles))), list(range(len(pred_vehicles)))
+
+        # Sort pred_vehicles by entry time to enable fast candidate lookup
+        pred_info = [(pred.ts_enter, pred.ts_exit, idx, pred) for idx, pred in enumerate(pred_vehicles)]
+        pred_info.sort()
+        pred_starts = [x[0] for x in pred_info]
+        pred_len = len(pred_info)
+        matched_pred_indices = set()
         matches = []
-        unmatched_gt = list(range(len(gt_vehicles)))
-        unmatched_pred = list(range(len(pred_vehicles)))
-        
-        # Simple temporal matching for now (can be enhanced with spatial IoU)
-        for i, gt_vehicle in enumerate(gt_vehicles):
-            best_match = None
+        unmatched_gt = []
+        # For marking these for O(1) lookup/removal later
+        gt_len = len(gt_vehicles)
+        # Precompute pred_vehicles as tuple (ts_enter, ts_exit, idx, obj)
+
+        for i, gt in enumerate(gt_vehicles):
+            gt_start, gt_end = gt.ts_enter, gt.ts_exit
+            # Use bisect to find leftmost pred_vehicle whose end >= gt_start
+            insert_idx = bisect_left(pred_starts, gt_start)
+            # Instead of iterating all, check possibly overlapping predictions:
             best_overlap = 0.0
-            
-            for j, pred_vehicle in enumerate(pred_vehicles):
-                if j not in unmatched_pred:
+            best_match_info = None
+
+            # Iterate leftwards from insert_idx-1 (if needed)
+            # Only check predictions whose intervals can overlap with gt
+            for pred_idx in range(max(0, insert_idx - 10), pred_len):  # range covers adjacent possible overlap
+                pred_start, pred_end, real_pred_idx, pred = pred_info[pred_idx]
+                if real_pred_idx in matched_pred_indices:
                     continue
-                    
-                # Calculate temporal overlap
-                overlap = self._temporal_overlap(gt_vehicle, pred_vehicle)
+                if pred_start > gt_end:
+                    break  # no further possible overlaps
+                overlap = self._temporal_overlap_precomputed(gt_start, gt_end, pred_start, pred_end)
                 if overlap > best_overlap and overlap > self.temporal_threshold:
-                    best_match = j
                     best_overlap = overlap
-            
-            if best_match is not None:
-                matches.append((i, best_match))
-                unmatched_gt.remove(i)
-                unmatched_pred.remove(best_match)
-        
+                    best_match_info = real_pred_idx
+
+            if best_match_info is not None:
+                matches.append((i, best_match_info))
+                matched_pred_indices.add(best_match_info)
+            else:
+                unmatched_gt.append(i)
+
+        # unmatched_pred = all prediction indices not matched
+        unmatched_pred = [j for j in range(pred_len) if j not in matched_pred_indices]
+
         return matches, unmatched_gt, unmatched_pred
     
     def _temporal_overlap(self, gt_vehicle: VehicleEvent, pred_vehicle: VehicleEvent) -> float:
@@ -341,3 +370,10 @@ class E2EEvaluator:
             json.dump(results, f, indent=2)
         
         logger.info(f"Detailed results saved to {output_path}") 
+
+    @staticmethod
+    def _temporal_overlap_precomputed(gt_start, gt_end, pred_start, pred_end) -> float:
+        """Calculate temporal overlap between two intervals (fast version with numbers)."""
+        intersection = max(0, min(gt_end, pred_end) - max(gt_start, pred_start))
+        union = max(gt_end, pred_end) - min(gt_start, pred_start)
+        return intersection / union if union > 0 else 0.0
