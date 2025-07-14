@@ -64,7 +64,7 @@ class EvaluationMetrics:
 
 class E2EEvaluator:
     """End-to-end evaluator for the traffic monitoring system."""
-    
+
     def __init__(self, iou_threshold: float = 0.5, temporal_threshold: float = 1.0):
         """
         Initialize evaluator.
@@ -150,14 +150,23 @@ class E2EEvaluator:
     
     def _temporal_overlap(self, gt_vehicle: VehicleEvent, pred_vehicle: VehicleEvent) -> float:
         """Calculate temporal overlap between two vehicle events."""
-        gt_start, gt_end = gt_vehicle.ts_enter, gt_vehicle.ts_exit
-        pred_start, pred_end = pred_vehicle.ts_enter, pred_vehicle.ts_exit
-        
-        # Calculate intersection over union of time intervals
-        intersection = max(0, min(gt_end, pred_end) - max(gt_start, pred_start))
-        union = max(gt_end, pred_end) - min(gt_start, pred_start)
-        
-        return intersection / union if union > 0 else 0.0
+        gt_start = gt_vehicle.ts_enter
+        gt_end = gt_vehicle.ts_exit
+        pred_start = pred_vehicle.ts_enter
+        pred_end = pred_vehicle.ts_exit
+
+        # Inline local extrema for interval endpoints
+        min_end = gt_end if gt_end < pred_end else pred_end
+        max_start = gt_start if gt_start > pred_start else pred_start
+        intersection = min_end - max_start
+        if intersection <= 0:
+            # Early exit if no overlap at all
+            return 0.0
+        max_end = gt_end if gt_end > pred_end else pred_end
+        min_start = gt_start if gt_start < pred_start else pred_start
+        union = max_end - min_start
+        # No need to check union > 0, since intersection > 0 guarantees union > 0
+        return intersection / union
     
     def evaluate_vehicle_identification(self, gt_vehicles: List[VehicleEvent], pred_vehicles: List[VehicleEvent]) -> Dict[str, float]:
         """Evaluate vehicle identification performance."""
