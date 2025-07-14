@@ -61,39 +61,53 @@ def detect_plates(model: YOLO, image: np.ndarray, conf_threshold: float = 0.5) -
 
 def crop_and_convert_plates(image: np.ndarray, detections: List[Tuple[List[int], float]]) -> List[np.ndarray]:
     """Crop detected plates and convert them to grayscale."""
+
     cropped_plates = []
-    
+    height, width = image.shape[:2]  # Compute once
+
+    append_crop = cropped_plates.append  # Local var lookup is faster
+
     for bbox, confidence in detections:
-        x1, y1, x2, y2 = [int(coord) for coord in bbox]
-        
-        # Ensure bounding box is within image bounds
-        height, width = image.shape[:2]
-        x1 = max(0, min(x1, width))
-        y1 = max(0, min(y1, height))
-        x2 = max(0, min(x2, width))
-        y2 = max(0, min(y2, height))
-        
-        # Skip invalid bounding boxes
+        # Fast/explicit coords unpack, int conversion (tuple unpack is fastest here)
+        try:
+            x1, y1, x2, y2 = bbox
+            x1 = int(x1)
+            y1 = int(y1)
+            x2 = int(x2)
+            y2 = int(y2)
+        except Exception as e:
+            logger.warning(f"Invalid bbox entry: {bbox} ({e})")
+            continue
+
+        # Clip to image bounds in single statements
+        x1 = 0 if x1 < 0 else x1 if x1 <= width else width
+        x2 = 0 if x2 < 0 else x2 if x2 <= width else width
+        y1 = 0 if y1 < 0 else y1 if y1 <= height else height
+        y2 = 0 if y2 < 0 else y2 if y2 <= height else height
+
+        # Skip invalid bbox fast
         if x2 <= x1 or y2 <= y1:
             logger.warning(f"Invalid bounding box: [{x1}, {y1}, {x2}, {y2}]")
             continue
-        
-        # Crop the plate region
+
         plate_crop = image[y1:y2, x1:x2]
-        
+
         if plate_crop.size == 0:
             logger.warning(f"Empty crop for bounding box: [{x1}, {y1}, {x2}, {y2}]")
             continue
-        
-        # Convert to grayscale
-        if len(plate_crop.shape) == 3:  # Color image
+
+        # Fastest check for color/grayscale with shape[2] if present
+        if plate_crop.ndim == 3 and plate_crop.shape[2] == 3:
             plate_gray = cv2.cvtColor(plate_crop, cv2.COLOR_BGR2GRAY)
-        else:  # Already grayscale
+        else:
             plate_gray = plate_crop
-        
-        cropped_plates.append(plate_gray)
-        logger.debug(f"Cropped plate with confidence {confidence:.3f}, size: {plate_gray.shape}")
-    
+
+        append_crop(plate_gray)
+        # Logging conditionally (string interpolation delayed until needed)
+        logger.debug(
+            "Cropped plate with confidence %.3f, size: %s", confidence, plate_gray.shape
+        )
+
     return cropped_plates
 
 def process_image(model: YOLO, image_path: Path, output_folder: Path, conf_threshold: float = 0.5) -> int:
