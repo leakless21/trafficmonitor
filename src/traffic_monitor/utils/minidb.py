@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Dict, Callable
 from loguru import logger
 import os # Import os for file deletion
+from functools import lru_cache
 
 # Database file location - will be set from config or default
 DB_PATH = None
@@ -83,10 +84,8 @@ def _connect() -> sqlite3.Connection:
     if DB_PATH is None:
         raise ValueError("Database path not configured. Call configure_database() first.")
     
-    # Ensure directory exists (skip for in-memory databases)
-    if DB_PATH != ":memory:" and isinstance(DB_PATH, Path):
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    
+    _ensure_db_dir(DB_PATH)
+
     return sqlite3.connect(
         DB_PATH,
         timeout=5.0,
@@ -309,25 +308,18 @@ def get_latest_plate_result(camera_id: str, vehicle_id: int) -> Dict | None:
         None if no result found
     """
     with _connect() as con:
-        cur = con.cursor()
-        cur.execute("""
+        cursor = con.execute(
+            """
             SELECT camera_id, vehicle_id, vehicle_class, lp_text, ocr_conf, 
                    first_seen, last_updated
             FROM plate_results_latest 
             WHERE camera_id = ? AND vehicle_id = ?;
-        """, (camera_id, vehicle_id))
-        
-        row = cur.fetchone()
+            """,
+            (camera_id, vehicle_id)
+        )
+        row = cursor.fetchone()
         if row:
-            return {
-                'camera_id': row[0],
-                'vehicle_id': row[1], 
-                'vehicle_class': row[2],
-                'lp_text': row[3],
-                'ocr_conf': row[4],
-                'first_seen': row[5],
-                'last_updated': row[6]
-            }
+            return dict(zip(_PLATE_RESULT_FIELDS, row))
         return None
 
 
@@ -374,3 +366,20 @@ def get_all_latest_plates(camera_id: str | None = None) -> list[Dict]:
             })
         
         return results 
+
+# Cache directory creation to avoid repeated work
+@lru_cache(maxsize=8)
+def _ensure_db_dir(db_path):
+    # Ensure directory exists (skip for in-memory databases)
+    if db_path != ":memory:" and isinstance(db_path, Path):
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+_PLATE_RESULT_FIELDS = (
+    'camera_id',
+    'vehicle_id',
+    'vehicle_class',
+    'lp_text',
+    'ocr_conf',
+    'first_seen',
+    'last_updated'
+)
