@@ -115,8 +115,12 @@ IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 def _resolve_path(base_dir: Path, p: str | Path) -> Path:
     """Resolve *p* relative to *base_dir* if not absolute."""
-    p = Path(p)
-    return p if p.is_absolute() else (base_dir / p)
+    if not isinstance(p, Path):
+        p = Path(p)
+    # store is_absolute as a local variable for faster access
+    if p.is_absolute():
+        return p
+    return base_dir / p
 
 
 def _has_images(directory: Path) -> bool:
