@@ -243,25 +243,40 @@ class E2EEvaluator:
         """Evaluate queue length estimation performance."""
         if not gt_queue or not pred_queue:
             return {'mae': 0.0, 'rmse': 0.0}
-        
-        # Match queue events by timestamp (simple nearest neighbor)
+
+        # Sort both lists by timestamp for efficient matching
+        gt_sorted = sorted(gt_queue, key=lambda x: x.timestamp)
+        pred_sorted = sorted(pred_queue, key=lambda x: x.timestamp)
+        gt_len = len(gt_sorted)
+        pred_len = len(pred_sorted)
+
         errors = []
-        for gt_event in gt_queue:
-            # Find closest prediction in time
-            closest_pred = min(pred_queue, key=lambda p: abs(p.timestamp - gt_event.timestamp))
-            if abs(closest_pred.timestamp - gt_event.timestamp) <= 2.0:  # Within 2 seconds
-                errors.append(abs(gt_event.length - closest_pred.length))
-        
+        i = j = 0
+        while i < gt_len and j < pred_len:
+            gt_event = gt_sorted[i]
+            pred_event = pred_sorted[j]
+            time_diff = abs(gt_event.timestamp - pred_event.timestamp)
+
+            if time_diff <= 2.0:
+                errors.append(abs(gt_event.length - pred_event.length))
+                i += 1
+                j += 1
+            elif gt_event.timestamp < pred_event.timestamp:
+                i += 1
+            else:
+                j += 1
+
         if not errors:
             return {'mae': float('inf'), 'rmse': float('inf')}
-        
-        mae = np.mean(errors)
-        rmse = np.sqrt(np.mean([e**2 for e in errors]))
-        
+
+        n = len(errors)
+        mae = sum(errors) / n
+        rmse = (sum(e*e for e in errors) / n) ** 0.5
+
         return {
             'mae': float(mae),
             'rmse': float(rmse),
-            'matched_events': float(len(errors))
+            'matched_events': float(n)
         }
     
     def evaluate(self, gt_path: Path, pred_path: Path) -> EvaluationMetrics:
