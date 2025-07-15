@@ -16,13 +16,13 @@
 # - CRITICAL: System-threatening failures
 
 frame_grabber:
-  video_source: "data/videos/input/IMG_3637.MOV"
+  video_source: "data/samples/videos/IMG_3637.MOV"
   resize_resolution: [1920, 1080]
   log_every_n_frames: 120 # Log every 30 frames
   process_every_n_frame: 1 # Increased from 3 to 5 for better real-time performance
 
 vehicle_detector:
-  model_path: "data/models/vehicle/8n/best.engine"
+  model_path: "data/models/vehicle/8n/best.pt"
   conf_threshold: 0.65
   class_mapping:
     0: "bicycle"
@@ -69,7 +69,7 @@ loguru:
   # Suppresses verbose logs from matplotlib, urllib3, requests, PIL
 
 lp_detector:
-  model_path: "data/models/plate/5nu/best.engine"
+  model_path: "data/models/plate/5nu/best.pt"
   conf_threshold: 0.7
 
 ocr_reader:
@@ -111,7 +111,7 @@ visualizer:
   counting_line_thickness: 3
 
   save_to_file: true # write the MP4
-  save_path: "data/videos/output/"
+  save_path: "data/outputs/videos/"
   output_fourcc: "mp4v"
   enable_gui: false
 

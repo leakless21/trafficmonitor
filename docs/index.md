@@ -133,11 +133,11 @@ Pre-trained models for YOLO, Re-ID, and OCR are required. You can download them 
 python tools/download_model.py
 ```
 
-Ensure that the `data/models/` directory contains the necessary `.pt` and `.onnx` files as specified in `src/traffic_monitor/config/settings.yaml`.
+Ensure that the `data/models/` directory contains the necessary `.pt` and `.onnx` files as specified in `configs/base/default.yaml`.
 
 ## Configuration
 
-All system configurations are managed in `src/traffic_monitor/config/settings.yaml`. Key parameters include:
+All system configurations are managed in `configs/base/default.yaml`. Key parameters include:
 
 - `video_source`: Path to your video file or camera index.
 - `resize_resolution`: Target resolution for processed frames.

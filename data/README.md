@@ -20,13 +20,13 @@ data/
 │   └── plate/               # License plate detection models
 │       ├── 5nu/             # Plate detection model
 │       └── [other variants]
-├── samples/                  # Small sample data for testing
-│   ├── videos/              # Sample video files
-│   └── images/              # Sample image files
+├── samples/                  # Sample data for testing and development
+│   ├── videos/              # Sample video files for testing
+│   └── images/              # Sample image files for testing
 └── outputs/                  # Generated outputs (gitignored)
     ├── .gitkeep
-    ├── videos/              # Processed video outputs
-    └── reports/             # Analysis reports
+    ├── videos/              # Processed video outputs with annotations
+    └── reports/             # Analysis reports and summaries
 ```
 
 ## Model Management

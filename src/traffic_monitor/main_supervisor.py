@@ -134,10 +134,10 @@ def main(config=None):
     # -----------------------------------------------------------------
     # Ensure both visualizer.save_path and summary_output_dir point to the
     # SAME session subfolder. When one (or both) are missing, we create
-    # a fresh timestamped directory under data/videos/output.
+    # a fresh timestamped directory under data/outputs/videos.
     # -----------------------------------------------------------------
     from datetime import datetime
-    default_output_root = Path("data/videos/output")
+    default_output_root = Path("data/outputs/videos")
     default_output_root.mkdir(parents=True, exist_ok=True)
 
     save_path = vis_config.get("save_path")

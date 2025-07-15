@@ -134,7 +134,7 @@ sequenceDiagram
 
 ## Key Config Files
 
-- `src/traffic_monitor/config/settings.yaml` – central place for paths, thresholds, ROI polygons.
+- `configs/base/default.yaml` – central place for paths, thresholds, ROI polygons.
 - `pyproject.toml` – package metadata; declares `traffic_monitor.cli:main` console-script.
 
 ## Database

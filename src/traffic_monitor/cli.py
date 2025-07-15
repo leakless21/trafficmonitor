@@ -145,9 +145,9 @@ def main(config, verbose, log_level, quiet, mode, source, count_line, start_sec,
     # -------------------------------------------------------------
     # ------------------------------------------------------------------
     # Configure universal output directory → each run gets its own subfolder
-    # under data/videos/output/<TIMESTAMP>/ so files stay grouped together.
+    # under data/outputs/videos/<TIMESTAMP>/ so files stay grouped together.
     # ------------------------------------------------------------------
-    base_output_dir = Path("data/videos/output")
+    base_output_dir = Path("data/outputs/videos")
 
     # Create base folder if it doesn't exist
     base_output_dir.mkdir(parents=True, exist_ok=True)

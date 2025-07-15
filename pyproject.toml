@@ -57,7 +57,8 @@ markers = [
     "unit: Unit tests",
     "integration: Integration tests", 
     "slow: Slow tests",
-    "gpu: Tests requiring GPU"
+    "gpu: Tests requiring GPU",
+    "stress: Stress tests"
 ]
 
 [tool.coverage.run]

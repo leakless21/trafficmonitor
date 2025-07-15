@@ -41,4 +41,4 @@ Pre-trained models for YOLO, Re-ID, and OCR are required. You can download them 
 python tools/download_model.py
 ```
 
-Ensure that the `data/models/` directory contains the necessary `.pt` and `.onnx` files as specified in `src/traffic_monitor/config/settings.yaml`.
+Ensure that the `data/models/` directory contains the necessary `.pt` and `.onnx` files as specified in `configs/base/default.yaml`.

@@ -31,6 +31,11 @@ class VisualizationService:
         self.font_thickness = config.get("font_thickness", 2)
         self.ocr_duration = config.get("ocr_duration", 3.0)
 
+        # Stats overlay configuration
+        self.stats_font_scale = config.get("stats_font_scale", self.font_scale * 1.5)
+        self.stats_bg_color = self._parse_color(config.get("stats_bg_color", [0, 0, 0]))  # default black background
+        self.stats_padding = config.get("stats_padding", 4)
+        
         # Parse colors safely
         self.colors = self._parse_colors(config.get("class_colors", {}))
         self.default_color = self._parse_color(config.get("default_color", [255, 255, 255]))
@@ -57,7 +62,7 @@ class VisualizationService:
         self.video_writer: cv2.VideoWriter | None = None
 
         if self.save_to_file:
-            self.output_path = config.get("save_path", "data/videos/output/")
+            self.output_path = config.get("save_path", "data/outputs/videos/")
             self.output_fourcc = config.get("output_fourcc", "mp4v")
             logger.info(f"[Visualizer] Saving to file: {self.output_path} with fourcc: {self.output_fourcc}")
             
@@ -125,32 +130,50 @@ class VisualizationService:
         cv2.putText(image, label, (x1, y1 - baseline), self.font, self.font_scale, (0, 0, 0), self.font_thickness)
         
     def _draw_stats(self, image: np.ndarray):
+        """Draw FPS and vehicle statistics with larger font and opaque background."""
+
+        def _put_text_with_bg(img: np.ndarray, text: str, origin: tuple[int, int]) -> int:
+            """Helper to draw text with an opaque background.
+
+            Returns the total vertical space consumed (text height + padding).
+            """
+            (text_w, text_h), baseline = cv2.getTextSize(text, self.font, self.stats_font_scale, self.font_thickness)
+            pad = self.stats_padding
+
+            top_left = (origin[0] - pad, origin[1] - text_h - baseline - pad)
+            bottom_right = (origin[0] + text_w + pad, origin[1] + baseline + pad)
+
+            cv2.rectangle(img, top_left, bottom_right, self.stats_bg_color, cv2.FILLED)
+            cv2.putText(img, text, origin, self.font, self.stats_font_scale, (255, 255, 255), self.font_thickness)
+
+            return text_h + baseline + pad * 2  # total vertical space consumed
+
         # Calculate FPS - require at least 10 frames to avoid early inflation
         if len(self.fps_calculator) >= 10:
             fps = len(self.fps_calculator) / (self.fps_calculator[-1] - self.fps_calculator[0])
             fps_text = f"FPS: {fps:.1f}"
         else:
             fps_text = f"FPS: Initializing... ({len(self.fps_calculator)}/10)"
-        
-        cv2.putText(image, fps_text, (10, 30), self.font, self.font_scale, (255, 255, 255), self.font_thickness)
+
+        x = 10  # left margin
+        y = 30  # initial baseline for first line
+
+        line_height = _put_text_with_bg(image, fps_text, (x, y))
 
         # Draw vehicle counts
-        #if self.latest_vehicle_count:
         total = self.latest_vehicle_count.get("total_count", 0)
         if total > 0 and hash(self.frame_count) % 100 == 0:
             logger.debug(f"[Visualizer] Drawing stats with total_count={total}")
-        by_class = self.latest_vehicle_count.get("class_counts", {})
 
-        # Draw total count
+        y += line_height
         count_text = f"Total: {total}"
-        cv2.putText(image, count_text, (10, 70), self.font, self.font_scale, (255, 255, 255), self.font_thickness)
+        line_height = _put_text_with_bg(image, count_text, (x, y))
 
-        # Draw class counts
-        index = 0
+        by_class = self.latest_vehicle_count.get("class_counts", {})
         for class_name, count in by_class.items():
+            y += line_height
             class_text = f"{class_name}: {count}"
-            cv2.putText(image, class_text, (10, 100 + (index * 20)), self.font, self.font_scale, (255, 255, 255), self.font_thickness)
-            index += 1
+            line_height = _put_text_with_bg(image, class_text, (x, y))
 
     def _draw_counting_lines(self, image: np.ndarray, frame_width: int, frame_height: int):
         """Draw counting lines on the frame using relative coordinates."""

@@ -2,7 +2,7 @@
 # Optimized for accuracy and stability over speed
 
 frame_grabber:
-  video_source: "data/videos/input/IMG_3637.MOV" # Will be overridden by benchmark runner
+  video_source: "data/samples/videos/IMG_3637.MOV" # Will be overridden by benchmark runner
   resize_resolution: [1280, 720]
   log_every_n_frames: 120 # Reduced logging for benchmarking
   process_every_n_frame: 1 # Process every frame for maximum accuracy

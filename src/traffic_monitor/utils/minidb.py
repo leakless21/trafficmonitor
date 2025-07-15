@@ -277,24 +277,29 @@ def write_vehicle_count(
     total_count: int,
     class_counts: Dict[str, int],
     ts: int | None = None,
-) -> None:
+) -> bool:
     """Insert aggregate counts for a frame or time-window."""
-    if ts is None:
-        ts = int(time.time() * 1000)
-    
-    with _connect() as con:
-        con.execute("""
-            INSERT INTO vehicle_counts
-            (ts, camera_id, total_count, class_counts)
-            VALUES (?, ?, ?, ?);
-        """, (
-            ts,
-            camera_id,
-            total_count,
-            json.dumps(class_counts, separators=(",", ":")),
-        ))
+    try:
+        if ts is None:
+            ts = int(time.time() * 1000)
         
-    logger.trace(f"Stored vehicle count: {total_count} total, {class_counts} by class")
+        with _connect() as con:
+            con.execute("""
+                INSERT INTO vehicle_counts
+                (ts, camera_id, total_count, class_counts)
+                VALUES (?, ?, ?, ?);
+            """, (
+                ts,
+                camera_id,
+                total_count,
+                json.dumps(class_counts, separators=(",", ":")),
+            ))
+            
+        logger.trace(f"Stored vehicle count: {total_count} total, {class_counts} by class")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to write vehicle count: {e}")
+        return False
 
 
 @_with_retry
@@ -370,6 +375,132 @@ def get_all_latest_plates(camera_id: str | None = None) -> list[Dict]:
                 'ocr_conf': row[4],
                 'first_seen': row[5],
                 'last_updated': row[6]
+            })
+        
+        return results
+
+
+@_with_retry
+def write_license_plate(
+    *,
+    camera_id: str,
+    vehicle_id: int,
+    plate_text: str,
+    confidence: float,
+    vehicle_class: str = None,
+    ts: int | None = None,
+) -> bool:
+    """
+    Write license plate data (wrapper for write_plate_result for test compatibility).
+    
+    Returns:
+        True if successful, False on error
+    """
+    try:
+        write_plate_result(
+            camera_id=camera_id,
+            vehicle_id=vehicle_id,
+            vehicle_class=vehicle_class,
+            lp_text=plate_text,
+            ocr_conf=confidence,
+            ts=ts
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to write license plate: {e}")
+        return False
+
+
+@_with_retry
+def get_vehicle_counts(camera_id: str | None = None, limit: int = 100) -> list[Dict]:
+    """
+    Get vehicle count records, optionally filtered by camera.
+    
+    Args:
+        camera_id: Optional camera filter
+        limit: Maximum number of records to return
+        
+    Returns:
+        List of dicts with vehicle count data
+    """
+    with _connect() as con:
+        cur = con.cursor()
+        
+        if camera_id:
+            cur.execute("""
+                SELECT id, ts, camera_id, total_count, class_counts
+                FROM vehicle_counts 
+                WHERE camera_id = ?
+                ORDER BY ts DESC
+                LIMIT ?;
+            """, (camera_id, limit))
+        else:
+            cur.execute("""
+                SELECT id, ts, camera_id, total_count, class_counts
+                FROM vehicle_counts 
+                ORDER BY ts DESC
+                LIMIT ?;
+            """, (limit,))
+        
+        results = []
+        for row in cur.fetchall():
+            try:
+                class_counts = json.loads(row[4]) if row[4] else {}
+            except json.JSONDecodeError:
+                class_counts = {}
+                
+            results.append({
+                'id': row[0],
+                'timestamp': row[1],
+                'camera_id': row[2],
+                'total_count': row[3],
+                'class_counts': class_counts
+            })
+        
+        return results
+
+
+@_with_retry
+def get_license_plates(camera_id: str | None = None, limit: int = 100) -> list[Dict]:
+    """
+    Get license plate records, optionally filtered by camera.
+    
+    Args:
+        camera_id: Optional camera filter
+        limit: Maximum number of records to return
+        
+    Returns:
+        List of dicts with license plate data
+    """
+    with _connect() as con:
+        cur = con.cursor()
+        
+        if camera_id:
+            cur.execute("""
+                SELECT id, ts, camera_id, vehicle_id, vehicle_class, lp_text, ocr_conf
+                FROM plate_results 
+                WHERE camera_id = ?
+                ORDER BY ts DESC
+                LIMIT ?;
+            """, (camera_id, limit))
+        else:
+            cur.execute("""
+                SELECT id, ts, camera_id, vehicle_id, vehicle_class, lp_text, ocr_conf
+                FROM plate_results 
+                ORDER BY ts DESC
+                LIMIT ?;
+            """, (limit,))
+        
+        results = []
+        for row in cur.fetchall():
+            results.append({
+                'id': row[0],
+                'timestamp': row[1],
+                'camera_id': row[2],
+                'vehicle_id': row[3],
+                'vehicle_class': row[4],
+                'plate_text': row[5],
+                'confidence': row[6]
             })
         
         return results 

@@ -1,6 +1,6 @@
 # Configuration
 
-All system configurations are managed in `src/traffic_monitor/config/settings.yaml`. Key parameters include:
+All system configurations are managed in `configs/base/default.yaml`. Key parameters include:
 
 - `video_source`: Path to your video file or camera index.
 - `resize_resolution`: Target resolution for processed frames.

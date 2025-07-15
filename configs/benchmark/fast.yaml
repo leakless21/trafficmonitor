@@ -2,7 +2,7 @@
 # Optimized for speed over accuracy for quick CI runs
 
 frame_grabber:
-  video_source: "data/videos/input/IMG_3637.MOV" # Will be overridden by benchmark runner
+  video_source: "data/samples/videos/IMG_3637.MOV" # Will be overridden by benchmark runner
   resize_resolution: [640, 360] # Lower resolution for speed
   log_every_n_frames: 300 # Minimal logging
   process_every_n_frame: 3 # Skip frames for speed
