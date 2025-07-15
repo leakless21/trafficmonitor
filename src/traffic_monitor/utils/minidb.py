@@ -25,7 +25,6 @@ import time
 from pathlib import Path
 from typing import Dict, Callable
 from loguru import logger
-import os # Import os for file deletion
 
 # Database file location - will be set from config or default
 DB_PATH = None
@@ -122,7 +121,7 @@ def init_db() -> None:
                     temp_conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")  # Flush WAL
                     temp_conn.close()
                     del temp_conn
-                except:
+                except Exception:
                     pass  # Ignore any errors during cleanup
                 
                 # Another garbage collection and delay
@@ -145,7 +144,7 @@ def init_db() -> None:
                     
             except OSError as e:
                 logger.error(f"Error deleting database files at {DB_PATH}: {e}")
-                logger.warning(f"Continuing with initialization despite deletion failure")
+                logger.warning("Continuing with initialization despite deletion failure")
                 # If deletion fails, continue with initialization anyway
         else:
             logger.info(f"Database file not found at {DB_PATH}, no reset needed.")

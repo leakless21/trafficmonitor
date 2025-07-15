@@ -1,11 +1,9 @@
 import time
 import cv2
 import uuid
-import base64
 import multiprocessing as mp
 from loguru import logger
 from typing import Any, Dict
-from queue import Full, Empty
 from multiprocessing.queues import Queue
 from multiprocessing.synchronize import Event
 from ..utils.logging_config import setup_logging
@@ -32,13 +30,12 @@ def frame_capture_process(
     # Initialize logging specifically for this child process to ensure proper log handling
     setup_logging(config.get("loguru"))
     
-    process_name = mp.current_process().name
     offline_mode = config.get("offline_mode", False)
     service_name = config.get("service_name", "FrameCaptureService")
     
     video_source = config.get("video_source")
     if not video_source:
-        logger.error(f"No video source found in config. Exiting frame grabber process.")
+        logger.error("No video source found in config. Exiting frame grabber process.")
         return
     
     logger.info(f"Opening video source: {video_source}")

@@ -1,10 +1,9 @@
 import yaml
 import sys
 import os
-import json
 import re
 from loguru import logger
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 class SensitiveDataFilter:
@@ -41,7 +40,7 @@ def setup_logging(loguru_config: Dict[str, Any] | None = None):
 
     if loguru_config is None:
         try:
-            with open("src/traffic_monitor/config/settings.yaml", "r") as f:
+            with open("configs/base/default.yaml", "r") as f:
                 settings = yaml.safe_load(f)
             loguru_config = settings.get("loguru", {})
         except FileNotFoundError:

@@ -1,6 +1,4 @@
-from re import I
-from typing import Dict, List, TypedDict, Optional # Optional is useful for fields that might not always be there
-import numpy as np # For type hinting numpy arrays if needed
+from typing import Dict, List, TypedDict # Optional is useful for fields that might not always be there
 
 # Example message structure for frames from FrameGrabber
 # (Matches your plan for FrameGrabber output)

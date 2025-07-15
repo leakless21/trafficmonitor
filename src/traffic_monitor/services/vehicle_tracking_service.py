@@ -1,16 +1,16 @@
 import multiprocessing as mp
 from multiprocessing.synchronize import Event
 from multiprocessing.queues import Queue
-from queue import Empty, Full
+from queue import Empty
 import cv2
 import numpy as np
 from loguru import logger
 from boxmot import create_tracker
-from ..utils.custom_types import FrameMessage, VehicleDetectionMessage, Detection, TrackedObject, TrackedVehicleMessage
+from ..utils.custom_types import VehicleDetectionMessage, Detection, TrackedObject, TrackedVehicleMessage
 from pathlib import Path
 from typing import Any, Dict, List
 from ..utils.logging_config import setup_logging
-from ..utils.queue_utils import safe_put, log_queue_stats
+from ..utils.queue_utils import safe_put
 
 
 class VehicleTrackingService:
@@ -133,7 +133,7 @@ def vehicle_tracking_process(config: Dict[str, Any], input_queue: Queue, output_
         per_class = config.get("per_class", False)
 
         # Construct the absolute path for tracker_config_path
-        tracker_config_path = Path("src/traffic_monitor/config/trackers") / f"{config.get('tracker_type', 'bytetrack')}.yaml"
+        tracker_config_path = Path("configs/trackers") / f"{config.get('tracker_type', 'bytetrack')}.yaml"
 
         try:
             tracker = VehicleTrackingService(

@@ -227,9 +227,6 @@ def main(config, verbose, log_level, quiet, mode, source, count_line, start_sec,
     # -------------------------------------------------------------
     # Merge CLI overrides with base YAML (default settings or provided via --config)
     # -------------------------------------------------------------
-    from traffic_monitor.utils.config_loader import load_config as _tm_load_cfg
-    from copy import deepcopy
-    from pathlib import Path as _Path
 
     def _deep_update(dest: dict, src: dict):
         """Recursively update dict dest with src (src overrides)."""

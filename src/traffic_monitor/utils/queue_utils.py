@@ -62,7 +62,7 @@ def put_realtime(queue: Queue, message: Any, service_name: str = "Unknown") -> b
     try:
         # Drop old message if queue is full
         try:
-            old_msg = queue.get_nowait()
+            queue.get_nowait()
             logger.trace(f"[{service_name}] Dropped old message to maintain real-time performance")
         except Empty:
             pass  # Queue was not full

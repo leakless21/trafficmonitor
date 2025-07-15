@@ -1,7 +1,7 @@
 import multiprocessing as mp
 from multiprocessing.synchronize import Event
 from multiprocessing.queues import Queue
-from queue import Empty, Full
+from queue import Empty
 from typing import Dict, Any, Tuple, Optional
 
 import cv2
@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover
 
 from ..utils.custom_types import PlateDetectionMessage, OCRResultMessage
 from ..utils.minidb import configure_database, write_plate_result
-from ..utils.queue_utils import safe_put, log_queue_stats
+from ..utils.queue_utils import safe_put
 
 class TextRecognitionService:
     def __init__(self, config: Dict[str, Any]):

@@ -1,7 +1,7 @@
 import multiprocessing as mp
 from multiprocessing.synchronize import Event
 from multiprocessing.queues import Queue
-from queue import Empty, Full
+from queue import Empty
 from typing import Dict, Any
 import os
 
@@ -10,8 +10,8 @@ import cv2
 import numpy as np
 from loguru import logger
 
-from ..utils.custom_types import FrameMessage, PlateDetectionMessage, TrackedVehicleMessage
-from ..utils.queue_utils import safe_put, log_queue_stats
+from ..utils.custom_types import PlateDetectionMessage, TrackedVehicleMessage
+from ..utils.queue_utils import safe_put
 
 class LicensePlateDetectionService:
     """
@@ -79,7 +79,7 @@ def license_plate_detection_process(
 
         logger.info(f"[LicensePlateDetectionProcess] Initializing LicensePlateDetectionService with model_path: {model_path}, conf_threshold: {conf_threshold}")
         lp_detector = LicensePlateDetectionService(model_path, conf_threshold)
-        logger.info(f"[LicensePlateDetectionProcess] LicensePlateDetectionService initialized successfully.")
+        logger.info("[LicensePlateDetectionProcess] LicensePlateDetectionService initialized successfully.")
 
     except Exception as e:
         logger.exception(f"[LPDetectorProcess] Failed to initialize LPDetector: {e}")
@@ -95,14 +95,13 @@ def license_plate_detection_process(
             except Empty:
                 continue
             if message is None:
-                logger.info(f"[LPDetectorProcess] Received None message, shutting down process")
+                logger.info("[LPDetectorProcess] Received None message, shutting down process")
                 output_queue.put(None)
                 break
         
             jpeg_bytes = message["frame_data_jpeg"]
             original_frame = cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8), cv2.IMREAD_COLOR)
 
-            lp_detections = []
             for vehicle in message["tracked_objects"]:
                 bbox = vehicle["bbox_xyxy"]
                 vehicle_crop = original_frame[bbox[1]:bbox[3], bbox[0]:bbox[2]]

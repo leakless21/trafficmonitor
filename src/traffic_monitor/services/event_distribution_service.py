@@ -1,7 +1,7 @@
 import multiprocessing as mp
 from multiprocessing.synchronize import Event
 from multiprocessing.queues import Queue
-from queue import Empty, Full
+from queue import Empty
 from typing import List
 from loguru import logger
 from ..utils.queue_utils import safe_put

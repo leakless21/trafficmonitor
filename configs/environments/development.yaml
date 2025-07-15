@@ -1,0 +1,23 @@
+# Development Environment Configuration
+# Inherits from: configs/base/default.yaml
+# Purpose: Fast development with reduced processing and verbose logging
+
+# Override base settings for development
+frame_grabber:
+  process_every_n_frame: 5  # Process fewer frames for faster development
+  log_every_n_frames: 30    # More frequent logging for debugging
+
+vehicle_detector:
+  conf_threshold: 0.5       # Lower threshold for more detections during testing
+
+loguru:
+  level: "DEBUG"            # Verbose logging for development
+  terminal_output_enabled: true
+  use_json: false           # Human-readable logs
+
+visualizer:
+  enable_gui: true          # Enable GUI for development
+  save_to_file: false       # Don't save videos during development
+
+database:
+  reset_on_startup: true    # Clean database on each run

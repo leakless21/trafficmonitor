@@ -55,7 +55,7 @@ The system is designed with a multiprocessing architecture, where each core func
 
 Inter-process communication is managed using `multiprocessing.Queue` to ensure efficient data flow and prevent bottlenecks.
 
-## End-to-End Workflow
+## System Workflow
 
 ```mermaid
 sequenceDiagram
@@ -146,4 +146,4 @@ sequenceDiagram
 
 - All processes invoke `setup_logging()` so each child writes to the same rotating Loguru file (plus console when verbose).
 
-That’s the end-to-end workflow: a supervisor orchestrates a fan-out/fan-in video-analytics pipeline, using queues for back-pressure and multiple processes for parallelism, with optional offline (full retention) or real-time (low-latency) behavior.
+That's the system workflow: a supervisor orchestrates a fan-out/fan-in video-analytics pipeline, using queues for back-pressure and multiple processes for parallelism, with optional offline (full retention) or real-time (low-latency) behavior.

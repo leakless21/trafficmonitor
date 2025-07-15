@@ -134,7 +134,6 @@ class SummaryService:
     
     def _extract_model_info(self, config: Dict[str, Any]):
         """Extract model information for the report."""
-        from pathlib import Path
         import os
         
         self.metrics.models_used = {
@@ -358,12 +357,12 @@ class SummaryService:
         config = report["configuration_used"]
         models = report["models_used"]
         
-        print(f"Video Processing:")
+        print("Video Processing:")
         print(f"  Resize Resolution: {config['video_processing']['resize_resolution']}")
         print(f"  Frame Skip: Every {config['video_processing']['process_every_n_frame']} frame(s)")
         print(f"  Mode: {'Offline' if config['video_processing']['offline_mode'] else 'Real-time'}")
         
-        print(f"Detection Model:")
+        print("Detection Model:")
         vehicle_model = models["vehicle_detection"]
         print(f"  Type: {vehicle_model['model_type']}")
         print(f"  Path: {vehicle_model['model_path']}")
@@ -373,11 +372,11 @@ class SummaryService:
         print(f"  Confidence Threshold: {config['detection']['confidence_threshold']}")
         print(f"  Device: {config['detection']['device']}")
         
-        print(f"Tracking:")
+        print("Tracking:")
         print(f"  Tracker Type: {config['tracking']['tracker_type']}")
         print(f"  Half Precision: {config['tracking']['use_half_precision']}")
         
-        print(f"License Plate:")
+        print("License Plate:")
         lp_model = models["license_plate_detection"]
         print(f"  Detection Model: {lp_model['model_path']}")
         print(f"  Model Exists: {'✅' if lp_model['model_exists'] else '❌'}")
@@ -387,7 +386,7 @@ class SummaryService:
         print(f"  OCR Model: {config['license_plate']['hub_model_name']}")
         print(f"  Language: {config['license_plate']['ocr_language']}")
         
-        print(f"Counting:")
+        print("Counting:")
         print(f"  Number of Counting Lines: {config['counting']['number_of_counting_lines']}")
         
         print("\n" + "-"*40)

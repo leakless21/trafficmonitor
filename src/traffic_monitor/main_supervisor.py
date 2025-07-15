@@ -1,12 +1,8 @@
 import multiprocessing as mp
 import time
-import os
-import yaml
 from loguru import logger
 from pathlib import Path
-from queue import Empty
 
-from traffic_monitor.utils.custom_types import OCRResultMessage
 from .utils.logging_config import setup_logging
 from .utils.minidb import configure_database, init_db
 from .services.event_distribution_service import event_distribution_process
@@ -35,7 +31,7 @@ def main(config=None):
 
     # Use absolute path to ensure it works regardless of working directory
     project_root = Path(__file__).parent.parent.parent
-    default_config_path = project_root / "src" / "traffic_monitor" / "config" / "settings.yaml"
+    default_config_path = project_root / "configs" / "base" / "default.yaml"
 
     # -------------------------------------------------------------
     # Load configuration

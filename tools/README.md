@@ -225,13 +225,74 @@ pixi run ocr_compare \
     --names Engine1 Engine2
 ```
 
-### 8. convert_to_onnx.py
+### 8. export_model.py
 
-Script for converting models to ONNX format for optimized inference.
+**NEW**: Multi-format exporter for Ultralytics YOLO `.pt` checkpoints.
+
+Features:
+- Convert to ONNX, TensorRT, TorchScript, CoreML, TFLite, and more.
+- Export multiple formats at once via `--formats onnx,engine` or `--formats all`.
+- Supports advanced flags: `--imgsz`, `--device`, `--half`, `--int8`, `--dynamic`, `--simplify`, `--nms`, `--opset`, `--output-dir`.
+- Click-based CLI (preferred) with legacy argparse fallback.
+
+Usage:
+
+```bash
+python tools/export_model.py \
+    --pt-model-path yolov8n.pt \
+    --formats onnx,engine \
+    --imgsz 640 --half --dynamic
+```
 
 ### 9. download_model.py
 
 Utility script for downloading pre-trained models.
+
+### 10. visualize_vehicle_detection.py
+
+Overlay vehicle detection bounding boxes and confidence scores on images or videos.
+
+Usage example:
+
+```bash
+python tools/visualize_vehicle_detection.py --weights yolov8.pt --source data/video.mp4 --output runs/vis_vehicle
+```
+
+### 11. visualize_plate_detection.py
+
+Visualize license-plate detections with bounding boxes and optional cropped-plate zooms.
+
+### 12. visualize_detection_benchmarks.py
+
+Generate comparative plots (mAP, latency, FPS, params, model size) from detection benchmark JSON files.
+
+### 13. visualize_ocr_benchmarks.py
+
+Create bar/line charts from OCR benchmark results to highlight performance across engines or datasets.
+
+### 14. run_all_visualizations.py
+
+Convenience wrapper that executes all visualization scripts to refresh every figure in a single command.
+
+### 15. benchmark_performance.py
+
+Run latency/throughput benchmarks for detection or OCR models; saves JSON and CSV summaries.
+
+### 16. generate_comprehensive_tables.py
+
+Aggregate multiple benchmark JSON files into CSV/Markdown tables suitable for reports, READMEs or papers.
+
+### 17. assert_performance_thresholds.py
+
+CI helper that exits with an error if benchmark metrics fall below predefined thresholds (guards against regressions).
+
+### 18. batch_run_traffic_monitor.py
+
+Run the full Traffic Monitor pipeline over a batch of videos defined in a YAML file — ideal for large-scale offline processing.
+
+### 19. create_unsplit_dataset.py
+
+Utility to merge or rearrange dataset splits (train/val/test) into a desired folder structure.
 
 ## Demo Scripts
 

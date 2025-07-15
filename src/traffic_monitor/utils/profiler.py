@@ -4,12 +4,11 @@ Provides timing, CPU, and GPU resource monitoring.
 """
 
 import time
-import json
 import psutil
 from collections import defaultdict
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from loguru import logger
 
 try:
@@ -52,7 +51,7 @@ class Profiler:
         start_time = time.perf_counter_ns()
         
         # Collect initial resource stats
-        start_resources = self._collect_resources()
+        self._collect_resources()
         
         try:
             yield

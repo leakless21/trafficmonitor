@@ -30,8 +30,8 @@ def load_config(config_path: str | Path) -> dict | None:
 
 
 if __name__ == "__main__":
-    test_path = "src/traffic_monitor/config/settings.yaml"
-    logger.info(f"--- Running direct test for config_loader.py ---")
+    test_path = "configs/base/default.yaml"
+    logger.info("--- Running direct test for config_loader.py ---")
     logger.info(f"Attempting to load: {test_path}")
     
     config = load_config(test_path)

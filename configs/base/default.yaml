@@ -1,0 +1,189 @@
+# Traffic Monitor Configuration
+#
+# LOGGING CONFIGURATION:
+# - Use LOG_LEVEL environment variable to override log level: LOG_LEVEL=INFO python main.py
+# - Use LOG_FORMAT=json for structured logging: LOG_FORMAT=json python main.py
+# - Combine both: LOG_LEVEL=WARNING LOG_FORMAT=json python main.py
+# - Sensitive data (license plates, API keys, passwords) is automatically redacted
+# - Third-party library noise (matplotlib, urllib3, etc.) is automatically suppressed
+#
+# LOG LEVELS (from most to least verbose):
+# - TRACE: High-frequency operations (individual frame processing)
+# - DEBUG: Periodic summaries and configuration details
+# - INFO: Process lifecycle events and significant state changes
+# - WARNING: Recoverable issues and performance concerns
+# - ERROR: Failures requiring attention
+# - CRITICAL: System-threatening failures
+
+frame_grabber:
+  video_source: "data/videos/input/IMG_3637.MOV"
+  resize_resolution: [1920, 1080]
+  log_every_n_frames: 120 # Log every 30 frames
+  process_every_n_frame: 1 # Increased from 3 to 5 for better real-time performance
+
+vehicle_detector:
+  model_path: "data/models/vehicle/8n/best.engine"
+  conf_threshold: 0.65
+  class_mapping:
+    0: "bicycle"
+    1: "bike"
+    2: "bus"
+    3: "car"
+    4: "person"
+    5: "truck"
+
+vehicle_tracker:
+  tracker_type: "bytetrack"
+  half: true
+  device: "cuda"
+  reid_model_path: None
+  evolve_param_dict: None
+  per_class: None
+
+loguru:
+  # Log level (can be overridden by LOG_LEVEL environment variable)
+  # Options: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "INFO"
+
+  # Log format (can be overridden by LOG_FORMAT=json environment variable for structured logging)
+  format: "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{process.name: <15}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+
+  # Enable JSON structured logging (set to true for production environments)
+  # Alternatively, use LOG_FORMAT=json environment variable
+  use_json: false
+
+  # File logging configuration
+  file_path: "logs/traffic_monitor.log"
+  file_rotation: "20 MB" # Rotate when file reaches this size
+  file_retention: "7 days" # Keep logs for this duration
+  file_compression: "zip" # Compress rotated logs
+  log_file_overwrite: true # Overwrite existing log file on startup
+
+  # Terminal output configuration
+  terminal_output_enabled: true # Set to false to disable console output
+
+  # Sensitive data protection (automatically redacts license plates, API keys, passwords)
+  # This is always enabled for security - no configuration needed
+
+  # Third-party library noise suppression (automatically enabled)
+  # Suppresses verbose logs from matplotlib, urllib3, requests, PIL
+
+lp_detector:
+  model_path: "data/models/plate/5nu/best.engine"
+  conf_threshold: 0.7
+
+ocr_reader:
+  backend: fast_plate_ocr
+  cache_duration_sec: 0.5
+  lang: "en" # Language code for PaddleOCR backend
+  use_gpu: true # Whether to enable GPU for PaddleOCR backend
+
+  # FastPlateOCR configuration (using new LicensePlateRecognizer API)
+  # Available models:
+  # - cct-s-v1-global-model: OCR model trained with global plates data (CCT-S variant)
+  # - cct-xs-v1-global-model: OCR model trained with global plates data (CCT-XS variant)
+  # - argentinian-plates-cnn-model: OCR for Argentinian license plates
+  # - argentinian-plates-cnn-synth-model: OCR for Argentinian plates (synthetic + real data)
+  # - european-plates-mobile-vit-v2-model: OCR for European license plates (MobileVIT-2)
+  # - global-plates-mobile-vit-v2-model: OCR for global license plates (+65 countries, MobileVIT-2)
+  hub_model_name: "cct-s-v1-global-model"
+  device: "cuda"
+  conf_threshold: 0.7
+
+vehicle_counter:
+  counting_lines:
+    - # First line (horizontal across video at 69.4% height)
+      - [0.31, 0.22]
+      - [0.85, 0.33]
+
+visualizer:
+  font: "FONT_HERSHEY_SIMPLEX" # Can use string name or integer (0)
+  font_scale: 0.6
+  font_thickness: 2
+  ocr_duration: 3.0
+
+  # Counting line visualization settings
+  counting_lines: # Copy from vehicle_counter for visualization
+    - # First line (horizontal across video at 69.4% height)
+      - [0.31, 0.22]
+      - [0.85, 0.33]
+  counting_line_color: [0, 255, 255] # Yellow in BGR format
+  counting_line_thickness: 3
+
+  save_to_file: true # write the MP4
+  save_path: "data/videos/output/"
+  output_fourcc: "mp4v"
+  enable_gui: false
+
+  # Queue management mode is automatically determined based on save_to_file:
+  # - save_to_file: false -> real-time mode (small queues, drop old frames for low latency)
+  # - save_to_file: true  -> offline mode (large/unbounded queues, preserve all frames)
+
+  # Modern, visually distinct color palette (BGR format for OpenCV)
+  class_colors:
+    # Primary vehicle colors (highly distinct)
+    car: [0, 119, 187] # Blue
+    truck: [14, 127, 255] # Orange
+    bus: [44, 160, 44] # Green
+    motorcycle: [40, 39, 214] # Red
+    bicycle: [189, 103, 148] # Purple
+    person: [75, 86, 140] # Brown
+
+    # Additional colors if needed
+    van: [194, 119, 227] # Pink
+    trailer: [127, 127, 127] # Gray
+    scooter: [34, 189, 188] # Olive
+    boat: [207, 190, 23] # Cyan
+
+  # Default color for unknown classes
+  default_color: [255, 255, 255] # White
+
+# Color palette reference (for easy customization):
+# These are scientifically chosen colors for maximum distinction
+#
+# Alternative color schemes you can copy-paste:
+#
+# === BRIGHT SCHEME ===
+# car: [0, 255, 255]      # Cyan
+# truck: [0, 165, 255]    # Orange
+# bus: [0, 255, 0]        # Green
+# motorcycle: [0, 0, 255] # Red
+# bicycle: [255, 0, 255]  # Magenta
+# person: [255, 255, 0]   # Yellow
+#
+# === PASTEL SCHEME ===
+# car: [180, 180, 255]    # Light Blue
+# truck: [180, 255, 180]  # Light Green
+# bus: [255, 180, 180]    # Light Red
+# motorcycle: [255, 255, 180] # Light Yellow
+# bicycle: [255, 180, 255]    # Light Magenta
+# person: [180, 255, 255]     # Light Cyan
+
+# Database Configuration
+database:
+  # Path to SQLite database file (relative to project root)
+  path: "data/db/traffic_monitor.db"
+
+  # Option to reset the database file on every application startup
+  reset_on_startup: true # Delete and recreate DB on each startup
+
+  # SQLite optimization settings
+  pragmas:
+    journal_mode: "WAL" # Write-Ahead Logging for better concurrency
+    synchronous: "NORMAL" # Balance between safety and performance
+    cache_size: -64000 # 64MB cache (negative = KB)
+    temp_store: "MEMORY" # Store temporary tables in memory
+
+# Summary Service Configuration
+summary_service:
+  # Enable summary report generation
+  enabled: true
+
+  # Directory to save summary reports
+  summary_output_dir: "data/reports"
+
+  # Whether to print summary to console when processing completes
+  print_summary: true
+
+  # Whether to save detailed JSON report
+  save_detailed_report: true

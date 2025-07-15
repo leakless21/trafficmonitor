@@ -3,7 +3,7 @@ from multiprocessing.synchronize import Event
 from multiprocessing.queues import Queue
 from pathlib import Path
 from queue import Empty
-from typing import Any, Dict
+from typing import Dict
 from loguru import logger
 
 import cv2

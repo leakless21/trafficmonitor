@@ -1,7 +1,7 @@
 import multiprocessing as mp
 from multiprocessing.synchronize import Event 
 from multiprocessing.queues import Queue 
-from queue import Empty, Full
+from queue import Empty
 from typing import Dict, Any
 
 import ultralytics
@@ -12,7 +12,7 @@ import time
 
 from ..utils.custom_types import FrameMessage, VehicleDetectionMessage, Detection
 from ..utils.logging_config import setup_logging
-from ..utils.queue_utils import safe_put, log_queue_stats
+from ..utils.queue_utils import safe_put
 from pathlib import Path
 
 class VehicleDetectionService:
@@ -94,7 +94,7 @@ def vehicle_detection_process(
         output_queue: Queue,
         shutdown_event: Event
 ):
-    print(f"[VehicleDetectorProcess] Process starting...") # Very early print for debugging
+    print("[VehicleDetectorProcess] Process starting...") # Very early print for debugging
     """
     Main process function for the vehicle detection service.
 
@@ -124,7 +124,8 @@ def vehicle_detection_process(
     # Color mapping from visualizer config (fallback to default white)
     vis_colors_cfg = config.get("visualizer", {}).get("class_colors", {})
     def _parse_color(val):
-        if isinstance(val, (list, tuple)): return tuple(int(c) for c in val)
+        if isinstance(val, (list, tuple)):
+            return tuple(int(c) for c in val)
         return (255,255,255)
     class_colors = {k: _parse_color(v) for k, v in vis_colors_cfg.items()}
     default_color = _parse_color(config.get("visualizer", {}).get("default_color", [255,255,255]))

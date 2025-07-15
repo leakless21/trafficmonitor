@@ -1,0 +1,25 @@
+# Production Environment Configuration
+# Inherits from: configs/base/default.yaml
+# Purpose: Optimized for production deployment
+
+# Override base settings for production
+frame_grabber:
+  process_every_n_frame: 1  # Process all frames
+  log_every_n_frames: 300   # Less frequent logging
+
+vehicle_detector:
+  conf_threshold: 0.7       # Higher threshold for precision
+
+loguru:
+  level: "INFO"             # Production logging level
+  terminal_output_enabled: false
+  use_json: true            # Structured logging for production
+  file_path: "/var/log/traffic_monitor/traffic_monitor.log"
+
+visualizer:
+  enable_gui: false         # No GUI in production
+  save_to_file: true        # Save output videos
+
+database:
+  reset_on_startup: false   # Preserve data in production
+  path: "/var/lib/traffic_monitor/traffic_monitor.db"

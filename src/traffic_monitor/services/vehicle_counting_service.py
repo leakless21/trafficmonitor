@@ -1,17 +1,15 @@
 import multiprocessing as mp
 from multiprocessing.synchronize import Event
 from multiprocessing.queues import Queue
-from queue import Empty, Full
-from typing import Dict, Any, Tuple
+from queue import Empty
 from loguru import logger
 import time
 from shapely.geometry import LineString, Point
 
 from ..utils.custom_types import TrackedVehicleMessage, VehicleCountMessage
-from ..utils.utils import relative_to_absolute_coords
 from ..utils.logging_config import setup_logging
 from ..utils.minidb import configure_database, write_vehicle_count
-from ..utils.queue_utils import safe_put, log_queue_stats
+from ..utils.queue_utils import safe_put
 
 class VehicleCountingService:
     def __init__(self, counting_lines_config: list):
@@ -33,20 +31,20 @@ class VehicleCountingService:
         self.vehicle_last_positions = {}
         self.counted_track_ids = set()
         self.counts = {}
-        logger.info(f"[Counter] Counter initialized with counting line in relative coordinates.")
+        logger.info("[Counter] Counter initialized with counting line in relative coordinates.")
 
     def _init_and_normalize_line(self, line_config_raw: list, og_frame_height: int, og_frame_width: int, frame_width: int, frame_height: int):
         if isinstance(line_config_raw[0][0], float):
             self.relative_coords = line_config_raw
-            logger.info(f"[Counter] Line config is already in relative coordinates.")
+            logger.info("[Counter] Line config is already in relative coordinates.")
         elif isinstance(line_config_raw[0][0], int):
             self.relative_coords = [
                 [line_config_raw[0][0] / og_frame_width, line_config_raw[0][1] / og_frame_height],
                 [line_config_raw[1][0] / og_frame_width, line_config_raw[1][1] / og_frame_height]
             ]
-            logger.info(f"[Counter] Line config is in absolute coordinates. Converting to relative coordinates.")
+            logger.info("[Counter] Line config is in absolute coordinates. Converting to relative coordinates.")
         else:
-            logger.error(f"[Counter] Line config is in an unknown format.")
+            logger.error("[Counter] Line config is in an unknown format.")
             self.relative_coords = []
             return None
         
@@ -54,7 +52,7 @@ class VehicleCountingService:
             pt1_abs = (self.relative_coords[0][0] * frame_width, self.relative_coords[0][1] * frame_height)
             pt2_abs = (self.relative_coords[1][0] * frame_width, self.relative_coords[1][1] * frame_height)
             self.absolute_coords = LineString([pt1_abs, pt2_abs])
-            logger.info(f"[Counter] Line config is in relative coordinates. Converting to absolute coordinates.")
+            logger.info("[Counter] Line config is in relative coordinates. Converting to absolute coordinates.")
         return self.absolute_coords
     
     def _get_bbox_center(self, bbox: list) -> Point:
