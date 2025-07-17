@@ -27,6 +27,7 @@ examples/
 plate_dataset/
 datasets/
 data/samples/videos
+data/outputs
 
 # Python cache and compiled files
 __pycache__/

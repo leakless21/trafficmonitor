@@ -153,17 +153,19 @@ def vehicle_tracking_process(config: Dict[str, Any], input_queue: Queue, output_
             try:
                 # Get vehicle detection message from the input queue with a timeout
                 vehicle_detection_message: VehicleDetectionMessage = input_queue.get(timeout=1)
+                
+                if vehicle_detection_message is None:
+                    logger.info("[VehicleTrackingService] Received None message, shutting down")
+                    # CRITICAL FIX: Send None to output queue to signal downstream services
+                    safe_put(output_queue, None, offline_mode, service_name)
+                    logger.info("[VehicleTrackingService] Sent None signal to downstream services")
+                    break
+                    
                 logger.trace(f"Received detection message for frame {vehicle_detection_message.get('frame_id')}")
             except Empty:
                 # Continue if the queue is empty after the timeout
                 logger.trace("Input queue empty, waiting for detection messages")
                 continue
-            
-            # Handle shutdown signal received as None message
-            if vehicle_detection_message is None:
-                logger.info("Received shutdown signal. Terminating.")
-                output_queue.put(None) # Signal downstream processes to shut down as well
-                break
 
             # Convert JPEG binary data back to an OpenCV frame
             jpeg_binary = vehicle_detection_message["frame_data_jpeg"]

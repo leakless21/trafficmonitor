@@ -390,36 +390,49 @@ class OCREvaluator:
         )
     
     def generate_confusion_matrix(self, predictions: List[Dict], ground_truth: List[Dict], 
-                                output_dir: Path, max_classes: int = 50) -> None:
+                                output_dir: Path, max_classes: int = 50, hide_diagonal: bool = False) -> None:
         """Generate confusion matrix for character-level analysis."""
         aligned_pairs = self.align_datasets(predictions, ground_truth)
         
-        # Collect all characters
-        pred_chars = []
-        gt_chars = []
-        
+        # Collect all characters with proper alignment (position-wise)
+        pred_chars: List[str] = []
+        gt_chars: List[str] = []
+
+        PLACEHOLDER = "-"  # signifies missing character when lengths differ
+
         for pred_item, gt_item in aligned_pairs:
             pred_text = self.normalize_plate_text(pred_item.get("plate_text", ""))
             gt_text = self.normalize_plate_text(gt_item.get("plate_text", ""))
-            
-            # Align characters (simple approach - pad shorter string)
+
             max_len = max(len(pred_text), len(gt_text))
-            pred_padded = pred_text.ljust(max_len, ' ')
-            gt_padded = gt_text.ljust(max_len, ' ')
-            
-            pred_chars.extend(list(pred_padded))
-            gt_chars.extend(list(gt_padded))
+
+            for idx in range(max_len):
+                g_char = gt_text[idx] if idx < len(gt_text) else PLACEHOLDER
+                p_char = pred_text[idx] if idx < len(pred_text) else PLACEHOLDER
+
+                gt_chars.append(g_char)
+                pred_chars.append(p_char)
+
+        # After collection, we will ignore PLACEHOLDER rows/cols later
         
-        # Get unique characters and limit to most common
-        char_counts = Counter(gt_chars)
-        most_common_chars = [char for char, _ in char_counts.most_common(max_classes)]
+        # Define full character set 0-9 and A-Z (always displayed)
+        full_chars = list("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+        # Map any out-of-vocabulary char to 'OTHER'
+        filtered_pred = [ch if ch in full_chars else 'OTHER' for ch in pred_chars]
+        filtered_gt = [ch if ch in full_chars else 'OTHER' for ch in gt_chars]
+
+        # Ensure 'OTHER' label exists if used
+        if 'OTHER' in filtered_pred or 'OTHER' in filtered_gt:
+            if 'OTHER' not in full_chars:
+                full_chars.append('OTHER')
         
         # Filter to most common characters
         filtered_pred = []
         filtered_gt = []
         for p, g in zip(pred_chars, gt_chars):
-            if g in most_common_chars:
-                filtered_pred.append(p if p in most_common_chars else 'OTHER')
+            if g in full_chars: # Only include characters that are in the full_chars set
+                filtered_pred.append(p if p in full_chars else 'OTHER')
                 filtered_gt.append(g)
         
         if not filtered_gt:
@@ -427,47 +440,73 @@ class OCREvaluator:
             return
         
         # Create confusion matrix
-        unique_chars = sorted(set(filtered_gt + filtered_pred))
-        cm = confusion_matrix(filtered_gt, filtered_pred, labels=unique_chars)
-        
+        unique_chars = full_chars
+        cm_counts = confusion_matrix(filtered_gt, filtered_pred, labels=unique_chars)
+
+        # Remove placeholder columns/rows if present (not in full_chars by definition)
+        for ign in ['', PLACEHOLDER]:
+            if ign in unique_chars:
+                idx = unique_chars.index(ign)
+                cm_counts = np.delete(cm_counts, idx, axis=0)
+                cm_counts = np.delete(cm_counts, idx, axis=1)
+                unique_chars.pop(idx)
+
+        # Remove rows/cols that have zero true counts to avoid clutter and NaNs
+        row_sums = cm_counts.sum(axis=1)
+        non_zero_indices = np.where(row_sums > 0)[0]
+        cm_counts = cm_counts[non_zero_indices][:, non_zero_indices]
+        unique_chars = [unique_chars[i] for i in non_zero_indices]
+
         # Normalize confusion matrix for better visualization of proportions
-        cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-        cm_normalized = np.nan_to_num(cm_normalized) # Handle division by zero for rows with no true labels
+        with np.errstate(divide='ignore', invalid='ignore'):
+            cm_normalized = cm_counts.astype(float) / cm_counts.sum(axis=1, keepdims=True)
+            cm_normalized = np.nan_to_num(cm_normalized)
+
+        # Optionally hide the diagonal (correct predictions) to focus on errors
+        if hide_diagonal:
+            np.fill_diagonal(cm_normalized, 0.0)
 
         # Plot confusion matrix
         plt.figure(figsize=(12, 10))
         
-        # Create a custom formatter function for the annotations
-        def format_func(x, pos):
-            if x == 0:
-                return ".00"
-            elif x >= 1:
-                return f"{x:.2f}"
-            else:  # 0 < x < 1
-                return f"{x:.2f}"[1:]  # Remove leading '0'
+        # Prepare annotations: show percentage plus count when count>0 (Ultralytics style)
+        annot = np.empty_like(cm_normalized).astype(object)
+        for i in range(cm_normalized.shape[0]):
+            for j in range(cm_normalized.shape[1]):
+                pct = cm_normalized[i, j]
+                cnt = cm_counts[i, j]
+                if cnt == 0 or pct < 0.005:
+                    annot[i, j] = ""
+                else:
+                    annot[i, j] = f"{pct*100:.1f}"
+
+        sns.heatmap(
+            cm_normalized,
+            annot=annot,
+            fmt='',
+            cmap='Blues',
+            vmin=0,
+            vmax=1,
+            xticklabels=unique_chars,
+            yticklabels=unique_chars,
+            linewidths=0.5,
+            linecolor='gray',
+            cbar=True,
+            square=True,
+            annot_kws={"fontsize": 6}
+        )
         
-        # Use matplotlib's FuncFormatter to handle annotation formatting
-        
-        # For seaborn heatmap, we'll use annot=True with fmt='.2g' and then manually adjust
-        # Actually, let's use a simpler approach with standard formatting
-        sns.heatmap(cm_normalized, annot=True, fmt='.2f', cmap='Blues',
-                   xticklabels=unique_chars, yticklabels=unique_chars)
-        
-        # Get the current axes and modify the text annotations
+        # Annotations already processed above; no further formatting needed
         ax = plt.gca()
-        for text in ax.texts:
-            current_text = text.get_text()
-            if current_text == "0.00":
-                text.set_text(".00")
-            elif current_text.startswith("0.") and len(current_text) > 2:
-                text.set_text(current_text[1:])  # Remove leading '0'
         
         plt.title('Character-level Confusion Matrix (Normalized by True Label)')
         plt.xlabel('Predicted Characters')
         plt.ylabel('True Characters')
         plt.tight_layout()
         
-        output_path = output_dir / "confusion_matrix_characters.png"
+        # If hiding diagonal, change file name to indicate
+        output_fname = "confusion_matrix_characters_ultra_no_diag.png" if hide_diagonal else "confusion_matrix_characters_ultra.png"
+        output_path = output_dir / output_fname
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
         
@@ -754,6 +793,12 @@ Examples:
         default=50,
         help='Maximum number of classes for confusion matrix (default: 50)'
     )
+
+    parser.add_argument(
+        '--hide_diagonal',
+        action='store_true',
+        help='Hide diagonal (correct predictions) in confusion matrix to better visualise misclassifications'
+    )
     
     args = parser.parse_args()
     
@@ -807,7 +852,7 @@ Examples:
         # Generate reports and visualizations
         evaluator.save_metrics_report(metrics, output_dir)
         evaluator.generate_performance_plots(metrics, latencies, output_dir)
-        evaluator.generate_confusion_matrix(predictions, ground_truth, output_dir, args.max_confusion_classes)
+        evaluator.generate_confusion_matrix(predictions, ground_truth, output_dir, args.max_confusion_classes, args.hide_diagonal)
         evaluator.generate_error_analysis(predictions, ground_truth, output_dir)
         
         # Print summary

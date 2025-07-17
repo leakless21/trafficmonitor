@@ -12,7 +12,7 @@ import time
 from collections import deque
 import os
 
-from ..utils.custom_types import TrackedVehicleMessage, VehicleCountMessage, OCRResultMessage, TrackedObject
+from ..utils.custom_types import TrackedVehicleMessage, VehicleCountMessage, OCRResultMessage, TrackedObject, EnrichedTrackedVehicleMessage, EnrichedTrackedObject
 from ..utils.utils import relative_to_absolute_coords
 from ..utils.logging_config import setup_logging
 
@@ -34,7 +34,19 @@ class VisualizationService:
         # Stats overlay configuration
         self.stats_font_scale = config.get("stats_font_scale", self.font_scale * 1.5)
         self.stats_bg_color = self._parse_color(config.get("stats_bg_color", [0, 0, 0]))  # default black background
+        self.stats_text_color = self._parse_color(config.get("stats_text_color", [255, 255, 255]))
         self.stats_padding = config.get("stats_padding", 4)
+        self.stats_bg_alpha = config.get("stats_bg_alpha", 0.4)
+
+        # Plate-specific color configuration
+        plate_text_colors_cfg = config.get("plate_text_colors", {})
+        self.plate_text_color_read = self._parse_color(plate_text_colors_cfg.get("read", [0, 255, 0]))
+        self.plate_text_color_detected = self._parse_color(plate_text_colors_cfg.get("detected", [0, 255, 255]))
+        self.plate_text_color_none = self._parse_color(plate_text_colors_cfg.get("none", [0, 0, 0]))
+        self.plate_bbox_color = self._parse_color(config.get("plate_bbox_color", [0, 255, 255]))  # default yellow
+
+        # Label text color (above vehicle bounding boxes)
+        self.label_text_color = self._parse_color(config.get("label_text_color", [0, 0, 0]))
         
         # Parse colors safely
         self.colors = self._parse_colors(config.get("class_colors", {}))
@@ -110,70 +122,92 @@ class VisualizationService:
             logger.error(f"[Visualizer] Debug info - fourcc: {self.output_fourcc}, fps: {og_fps}, dimensions: {frame_width}x{frame_height}")
             self.video_writer = None
 
-    def _draw_vehicle_info(self, image: np.ndarray, vehicle: TrackedObject):
+    def _draw_vehicle_info(self, image: np.ndarray, vehicle: TrackedObject | EnrichedTrackedObject):
         x1, y1, x2, y2 = vehicle["bbox_xyxy"]
         class_name = vehicle["class_name"]
         track_id = vehicle["track_id"]
 
         color = self.colors.get(class_name, self.default_color)
 
+        # Draw vehicle bounding box
         cv2.rectangle(image, (x1, y1), (x2, y2), color, self.font_thickness)
+
+        # Draw plate bounding box if available (from enriched message)
+        if isinstance(vehicle, dict) and vehicle.get("plate_bbox_xyxy") and vehicle.get("plate_detected"):
+            plate_bbox = vehicle["plate_bbox_xyxy"]
+            if plate_bbox and len(plate_bbox) == 4:
+                px1, py1, px2, py2 = plate_bbox
+                # Use a different color for plate bbox (yellow)
+                cv2.rectangle(image, (px1, py1), (px2, py2), self.plate_bbox_color, 2)
 
         label = f"{class_name} {track_id}"
         
-        # Always show the most confident plate we have recorded for this track
-        if track_id in self.latest_ocr_results:
-            label += f" {self.latest_ocr_results[track_id]['text']}"
+        # Priority 1: Use enriched message plate text if available
+        if isinstance(vehicle, dict) and vehicle.get("plate_text") and vehicle.get("plate_text_read"):
+            plate_text = vehicle["plate_text"]
+            ocr_conf = vehicle.get("ocr_confidence", 0)
+            label += f" {plate_text} ({ocr_conf:.2f})"
+        # Priority 2: Fallback to legacy OCR results for backward compatibility
+        #elif track_id in self.latest_ocr_results:
+        #   label += f" {self.latest_ocr_results[track_id]['text']}"
         
+        # Text color (static, configurable)
+        text_color = self.label_text_color
+
         (text_width, text_height), baseline = cv2.getTextSize(label, self.font, self.font_scale, self.font_thickness)
         cv2.rectangle(image, (x1, y1 - text_height - baseline), (x1 + text_width, y1 - baseline), color, cv2.FILLED)
-        cv2.putText(image, label, (x1, y1 - baseline), self.font, self.font_scale, (0, 0, 0), self.font_thickness)
+        cv2.putText(image, label, (x1, y1 - baseline), self.font, self.font_scale, text_color, self.font_thickness)
         
     def _draw_stats(self, image: np.ndarray):
-        """Draw FPS and vehicle statistics with larger font and opaque background."""
+        """Draw FPS and vehicle statistics inside one semi-transparent box."""
 
-        def _put_text_with_bg(img: np.ndarray, text: str, origin: tuple[int, int]) -> int:
-            """Helper to draw text with an opaque background.
-
-            Returns the total vertical space consumed (text height + padding).
-            """
-            (text_w, text_h), baseline = cv2.getTextSize(text, self.font, self.stats_font_scale, self.font_thickness)
-            pad = self.stats_padding
-
-            top_left = (origin[0] - pad, origin[1] - text_h - baseline - pad)
-            bottom_right = (origin[0] + text_w + pad, origin[1] + baseline + pad)
-
-            cv2.rectangle(img, top_left, bottom_right, self.stats_bg_color, cv2.FILLED)
-            cv2.putText(img, text, origin, self.font, self.stats_font_scale, (255, 255, 255), self.font_thickness)
-
-            return text_h + baseline + pad * 2  # total vertical space consumed
-
-        # Calculate FPS - require at least 10 frames to avoid early inflation
+        # 1. Build the list of text lines
         if len(self.fps_calculator) >= 10:
             fps = len(self.fps_calculator) / (self.fps_calculator[-1] - self.fps_calculator[0])
             fps_text = f"FPS: {fps:.1f}"
         else:
             fps_text = f"FPS: Initializing... ({len(self.fps_calculator)}/10)"
 
-        x = 10  # left margin
-        y = 30  # initial baseline for first line
+        lines: list[str] = [fps_text]
 
-        line_height = _put_text_with_bg(image, fps_text, (x, y))
-
-        # Draw vehicle counts
         total = self.latest_vehicle_count.get("total_count", 0)
-        if total > 0 and hash(self.frame_count) % 100 == 0:
-            logger.debug(f"[Visualizer] Drawing stats with total_count={total}")
+        lines.append(f"Total: {total}")
 
-        y += line_height
-        count_text = f"Total: {total}"
-        line_height = _put_text_with_bg(image, count_text, (x, y))
+        for class_name, count in self.latest_vehicle_count.get("class_counts", {}).items():
+            lines.append(f"{class_name}: {count}")
 
-        by_class = self.latest_vehicle_count.get("class_counts", {})
-        for class_name, count in by_class.items():
-            y += line_height
-            class_text = f"{class_name}: {count}"
-            line_height = _put_text_with_bg(image, class_text, (x, y))
+        # 2. Determine the bounding box size
+        pad = self.stats_padding
+        max_width = 0
+        total_height = 0
+        sizes: list[tuple[int, int, int]] = []  # (w, h, baseline)
+
+        for txt in lines:
+            (tw, th), baseline = cv2.getTextSize(txt, self.font, self.stats_font_scale, self.font_thickness)
+            max_width = max(max_width, tw)
+            total_height += th + baseline
+            sizes.append((tw, th, baseline))
+
+        # Add padding between lines
+        line_gap = pad
+        total_height += line_gap * (len(lines) - 1)
+
+        # 3. Define top-left origin for text
+        x0, y0 = 10, 10 + pad  # y0 is where the first text's baseline will be drawn minus its height
+
+        # 4. Draw semi-transparent rectangle on overlay then blend
+        overlay = image.copy()
+        rect_top_left = (x0 - pad, y0 - pad)
+        rect_bottom_right = (x0 + max_width + pad, y0 + total_height + pad)
+        cv2.rectangle(overlay, rect_top_left, rect_bottom_right, self.stats_bg_color, cv2.FILLED)
+        cv2.addWeighted(overlay, self.stats_bg_alpha, image, 1 - self.stats_bg_alpha, 0, image)
+
+        # 5. Draw the text lines over the blended image
+        current_y = y0
+        for idx, txt in enumerate(lines):
+            _, th, baseline = sizes[idx]
+            cv2.putText(image, txt, (x0, current_y + th), self.font, self.stats_font_scale, self.stats_text_color, self.font_thickness)
+            current_y += th + baseline + line_gap
 
     def _draw_counting_lines(self, image: np.ndarray, frame_width: int, frame_height: int):
         """Draw counting lines on the frame using relative coordinates."""
@@ -193,7 +227,7 @@ class VisualizationService:
                 # Draw the line
                 cv2.line(image, start_abs, end_abs, self.counting_line_color, self.counting_line_thickness)
                 
-    def process_frame(self, frame_msg: TrackedVehicleMessage) -> np.ndarray:
+    def process_frame(self, frame_msg: TrackedVehicleMessage | EnrichedTrackedVehicleMessage) -> np.ndarray:
         jpeg_bytes = frame_msg["frame_data_jpeg"]
         frame = cv2.imdecode(np.frombuffer(jpeg_bytes, np.uint8), cv2.IMREAD_COLOR)
         current_time = time.time()
@@ -272,8 +306,20 @@ def visualization_process(config: dict, tracking_queue: Queue, OCR_queue: Queue,
         while not shutdown_event.is_set():
             try:
                 # Use non-blocking get to maintain real-time behavior
-                tracking_msg: TrackedVehicleMessage = tracking_queue.get_nowait()
+                tracking_msg: TrackedVehicleMessage | EnrichedTrackedVehicleMessage = tracking_queue.get_nowait()
+                if tracking_msg is None:
+                    logger.info("[VisualizationService] Received shutdown signal")
+                    shutdown_event.set()
+                    break
                 logger.trace(f"Received tracking message for frame: {tracking_msg.get('frame_id', 'unknown')}")
+                
+                # Log message type for debugging
+                if isinstance(tracking_msg, dict) and 'tracked_objects' in tracking_msg:
+                    sample_obj = tracking_msg['tracked_objects'][0] if tracking_msg['tracked_objects'] else {}
+                    if 'plate_text' in sample_obj:
+                        logger.info(f"[VisualizationService] Received ENRICHED message with plate data: {sample_obj.get('plate_text')}")
+                    else:
+                        logger.debug(f"[VisualizationService] Received standard tracking message")
 
                 # NEW: Drain OCR and vehicle count queues on every iteration to keep overlays current
                 try:

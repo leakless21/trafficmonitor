@@ -33,9 +33,14 @@ def setup_logging(loguru_config: Dict[str, Any] | None = None):
     or from a settings.yaml file if no dictionary is provided.
     Includes process name for clarity in multiprocessing.
     """
-    # Only remove existing handlers in the main process to avoid disrupting parent configuration
-    current_process_name = os.getenv('MULTIPROCESSING_PROCESS_NAME', 'MainProcess')
-    if current_process_name == 'MainProcess':
+    # Only remove existing handlers in the main process to avoid disrupting parent configuration.
+    # Using multiprocessing.current_process().name is more reliable than relying on an environment
+    # variable that may not be set in child processes. This prevents every spawned process from
+    # thinking it is the main process and overwriting the shared log file.
+    import multiprocessing
+    current_process_name = multiprocessing.current_process().name
+
+    if current_process_name == "MainProcess":
         logger.remove()
 
     if loguru_config is None:
@@ -86,8 +91,8 @@ def setup_logging(loguru_config: Dict[str, Any] | None = None):
     # Create sensitive data filter
     sensitive_filter = SensitiveDataFilter()
 
-    # Handle file overwrite only in main process
-    if current_process_name == 'MainProcess' and log_file_overwrite and log_file_path and os.path.exists(log_file_path):
+    # Handle file overwrite only in the actual main process (see check above)
+    if current_process_name == "MainProcess" and log_file_overwrite and log_file_path and os.path.exists(log_file_path):
         try:
             os.remove(log_file_path)
             logger.info(f"Existing log file '{log_file_path}' removed for overwrite.")

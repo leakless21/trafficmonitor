@@ -1,0 +1,74 @@
+{
+  "timestamp": 1752600571.0031428,
+  "total_tests": 3,
+  "passed_tests": 3,
+  "success_rate": 100.0,
+  "overall_success": true,
+  "detailed_results": [
+    {
+      "vehicle_id": 101,
+      "expected_plate": "ABC123",
+      "actual_plate": "ABC123",
+      "plate_detected": true,
+      "plate_text_read": true,
+      "validation_passed": true,
+      "issues": []
+    },
+    {
+      "vehicle_id": 102,
+      "expected_plate": "XYZ789",
+      "actual_plate": "XYZ789",
+      "plate_detected": true,
+      "plate_text_read": true,
+      "validation_passed": true,
+      "issues": []
+    },
+    {
+      "vehicle_id": 103,
+      "expected_plate": null,
+      "actual_plate": null,
+      "plate_detected": true,
+      "plate_text_read": false,
+      "validation_passed": true,
+      "issues": []
+    }
+  ],
+  "test_scenarios": [
+    {
+      "frame_id": "frame_001",
+      "vehicle_id": 101,
+      "plate_text": "ABC123",
+      "plate_bbox": [
+        150,
+        120,
+        250,
+        150
+      ],
+      "description": "Complete data (tracking + plate + OCR)"
+    },
+    {
+      "frame_id": "frame_002",
+      "vehicle_id": 102,
+      "plate_text": "XYZ789",
+      "plate_bbox": [
+        200,
+        130,
+        300,
+        160
+      ],
+      "description": "Out-of-order data (OCR before tracking)"
+    },
+    {
+      "frame_id": "frame_003",
+      "vehicle_id": 103,
+      "plate_text": null,
+      "plate_bbox": [
+        250,
+        140,
+        350,
+        170
+      ],
+      "description": "Plate detected but no OCR"
+    }
+  ]
+}

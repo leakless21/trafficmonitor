@@ -1,0 +1,328 @@
+{
+  "summary_found": true,
+  "database_plates": 0,
+  "log_analysis": {
+    "plate_mentions": {},
+    "visualization_logs": 0,
+    "ocr_logs": 43,
+    "fusion_logs": 0,
+    "total_plate_mentions": 0
+  },
+  "validation_passed": false,
+  "issues": [
+    "No plates recognized by OCR",
+    "No plates in database"
+  ],
+  "recommendations": [],
+  "summary_data": {
+    "summary": {
+      "video_source": "tests/fixtures/IMG_3311.MOV",
+      "processing_completed_at": "2025-07-16 00:06:23",
+      "total_processing_time": "8.53 seconds",
+      "frames_processed": 99,
+      "processing_fps": "11.61 FPS"
+    },
+    "configuration_used": {
+      "video_processing": {
+        "video_source": "tests/fixtures/IMG_3311.MOV",
+        "resize_resolution": [
+          320,
+          240
+        ],
+        "process_every_n_frame": 10,
+        "offline_mode": true
+      },
+      "detection": {
+        "confidence_threshold": 0.7,
+        "device": "cpu",
+        "class_mapping": {
+          "0": "bicycle",
+          "1": "bike",
+          "2": "bus",
+          "3": "car",
+          "4": "person",
+          "5": "truck"
+        }
+      },
+      "tracking": {
+        "tracker_type": "bytetrack",
+        "use_half_precision": true,
+        "device": "cpu"
+      },
+      "license_plate": {
+        "lp_confidence_threshold": 0.7,
+        "ocr_backend": "fast_plate_ocr",
+        "ocr_language": "en",
+        "ocr_use_gpu": true,
+        "hub_model_name": "cct-s-v1-global-model"
+      },
+      "counting": {
+        "counting_lines": [
+          [
+            [
+              0.3,
+              0.5
+            ],
+            [
+              0.7,
+              0.5
+            ]
+          ]
+        ],
+        "number_of_counting_lines": 1
+      },
+      "visualization": {
+        "save_to_file": true,
+        "save_path": "data/outputs/videos/fusion_quick_test",
+        "output_fourcc": "mp4v"
+      }
+    },
+    "models_used": {
+      "vehicle_detection": {
+        "model_path": "data/models/vehicle/8n/best.pt",
+        "model_exists": true,
+        "model_size_mb": 5.97,
+        "model_type": "YOLO"
+      },
+      "license_plate_detection": {
+        "model_path": "data/models/plate/5nu/best.pt",
+        "model_exists": true,
+        "model_size_mb": 5.06,
+        "model_type": "YOLO"
+      },
+      "tracking": {
+        "tracker_type": "bytetrack",
+        "reid_model_path": "None",
+        "reid_model_exists": false,
+        "reid_model_size_mb": 0
+      },
+      "ocr": {
+        "backend": "fast_plate_ocr",
+        "hub_model_name": "cct-s-v1-global-model",
+        "language": "en"
+      }
+    },
+    "vehicle_analysis": {
+      "total_detections": 0,
+      "unique_vehicles_tracked": 95,
+      "total_vehicles_counted": 3,
+      "vehicle_counts_by_class": {
+        "car": 2,
+        "bike": 1
+      },
+      "detection_counts_by_class": {}
+    },
+    "license_plate_analysis": {
+      "plates_detected": 0,
+      "plates_successfully_recognized": 0,
+      "ocr_success_rate": "0.0%",
+      "recognized_plates": {}
+    },
+    "performance_metrics": {
+      "processing_duration_seconds": 8.530407667160034,
+      "average_processing_fps": 11.605541477358178,
+      "total_errors": 0,
+      "error_rate": "0.00%"
+    },
+    "detailed_metrics": {
+      "video_source": "tests/fixtures/IMG_3311.MOV",
+      "video_duration_seconds": 0.0,
+      "total_frames": 0,
+      "processed_frames": 99,
+      "processing_start_time": 1752599174.8933008,
+      "processing_end_time": 1752599183.4237084,
+      "processing_duration_seconds": 8.530407667160034,
+      "average_fps": 0.0,
+      "frames_per_second_actual": 11.605541477358178,
+      "total_detections": 0,
+      "total_tracked_vehicles": 1170,
+      "unique_vehicle_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        257,
+        17,
+        18,
+        270,
+        20,
+        275,
+        280,
+        281,
+        283,
+        284,
+        286,
+        288,
+        33,
+        34,
+        261,
+        289,
+        292,
+        294,
+        39,
+        262,
+        295,
+        299,
+        54,
+        56,
+        60,
+        61,
+        64,
+        66,
+        67,
+        69,
+        75,
+        91,
+        103,
+        105,
+        106,
+        107,
+        110,
+        112,
+        116,
+        118,
+        119,
+        122,
+        126,
+        132,
+        134,
+        136,
+        138,
+        141,
+        144,
+        145,
+        152,
+        153,
+        158,
+        164,
+        168,
+        171,
+        172,
+        173,
+        176,
+        179,
+        181,
+        182,
+        184,
+        187,
+        198,
+        202,
+        203,
+        215,
+        218,
+        219,
+        220,
+        226,
+        228,
+        237,
+        240,
+        243,
+        244,
+        249,
+        251,
+        252
+      ],
+      "final_vehicle_counts": {
+        "car": 2,
+        "bike": 1
+      },
+      "total_vehicles_counted": 3,
+      "plates_detected": 0,
+      "plates_recognized": 0,
+      "ocr_success_rate": 0.0,
+      "frame_drops": 0,
+      "processing_errors": 0,
+      "configuration_used": {
+        "video_processing": {
+          "video_source": "tests/fixtures/IMG_3311.MOV",
+          "resize_resolution": [
+            320,
+            240
+          ],
+          "process_every_n_frame": 10,
+          "offline_mode": true
+        },
+        "detection": {
+          "confidence_threshold": 0.7,
+          "device": "cpu",
+          "class_mapping": {
+            "0": "bicycle",
+            "1": "bike",
+            "2": "bus",
+            "3": "car",
+            "4": "person",
+            "5": "truck"
+          }
+        },
+        "tracking": {
+          "tracker_type": "bytetrack",
+          "use_half_precision": true,
+          "device": "cpu"
+        },
+        "license_plate": {
+          "lp_confidence_threshold": 0.7,
+          "ocr_backend": "fast_plate_ocr",
+          "ocr_language": "en",
+          "ocr_use_gpu": true,
+          "hub_model_name": "cct-s-v1-global-model"
+        },
+        "counting": {
+          "counting_lines": [
+            [
+              [
+                0.3,
+                0.5
+              ],
+              [
+                0.7,
+                0.5
+              ]
+            ]
+          ],
+          "number_of_counting_lines": 1
+        },
+        "visualization": {
+          "save_to_file": true,
+          "save_path": "data/outputs/videos/fusion_quick_test",
+          "output_fourcc": "mp4v"
+        }
+      },
+      "models_used": {
+        "vehicle_detection": {
+          "model_path": "data/models/vehicle/8n/best.pt",
+          "model_exists": true,
+          "model_size_mb": 5.97,
+          "model_type": "YOLO"
+        },
+        "license_plate_detection": {
+          "model_path": "data/models/plate/5nu/best.pt",
+          "model_exists": true,
+          "model_size_mb": 5.06,
+          "model_type": "YOLO"
+        },
+        "tracking": {
+          "tracker_type": "bytetrack",
+          "reid_model_path": "None",
+          "reid_model_exists": false,
+          "reid_model_size_mb": 0
+        },
+        "ocr": {
+          "backend": "fast_plate_ocr",
+          "hub_model_name": "cct-s-v1-global-model",
+          "language": "en"
+        }
+      }
+    }
+  }
+}

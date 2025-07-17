@@ -30,8 +30,26 @@ class TrackedObject(TypedDict):
     class_name: str
     track_id: int
 
+class EnrichedTrackedObject(TypedDict):
+    bbox_xyxy: List[int] # [x1, y1, x2, y2]
+    confidence: float
+    class_id: int
+    class_name: str
+    track_id: int
+    # Optional plate fields added by downstream services
+    plate_bbox_xyxy: List[int] | None  # added by LicensePlateDetection
+    plate_text: str | None             # added by OCR
+    plate_confidence: float | None     # plate detection confidence
+    ocr_confidence: float | None       # OCR text confidence
+    # Progress flags for fast-path optimization
+    plate_detected: bool               # License-plate detector found a plausible bbox
+    plate_text_read: bool              # OCR successfully returned text above conf threshold
+
 class TrackedVehicleMessage(FrameMessage):
     tracked_objects: List[TrackedObject]
+
+class EnrichedTrackedVehicleMessage(FrameMessage):
+    tracked_objects: List[EnrichedTrackedObject]
 
 class PlateDetectionMessage(FrameMessage):
     #Passthrough

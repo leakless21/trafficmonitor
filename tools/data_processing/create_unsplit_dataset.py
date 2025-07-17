@@ -20,28 +20,42 @@ logger = logging.getLogger(__name__)
 def create_unsplit_dataset():
     """Create an unsplit version of the merged dataset."""
     
-    # Define paths
-    source_dir = Path("lp_data/merged_dataset")
-    target_dir = Path("lp_data/merged_dataset_unsplit")
-    
-    # Create target directory
-    target_dir.mkdir(exist_ok=True)
-    target_all_dir = target_dir / "all"
+    # Define source dataset directory
+    # The merged dataset lives in data/merged_dataset with separate
+    # `train` and `valid` folders.  We want to create a unified
+    # `all` folder *inside the same merged_dataset directory* so that
+    # downstream code can reference a single location.
+
+    source_dir = Path("data/merged_dataset")
+
+    # Destination folder that will hold the unified images
+    target_all_dir = source_dir / "all"
     target_all_dir.mkdir(exist_ok=True)
+
+    # We keep all generated artefacts (annotations, summary) inside the
+    # same merged_dataset directory for simplicity.
+    target_dir = source_dir
     
     logger.info(f"Creating unsplit dataset in {target_dir}")
     
-    # Read train and valid annotations
-    train_csv = source_dir / "train_anotaciones.csv"
-    valid_csv = source_dir / "valid_anotaciones.csv"
+    # Expected annotation files
+    train_csv = source_dir / "train_annotations.csv"
+    valid_csv = source_dir / "valid_annotations.csv"
+
+    if not train_csv.exists() or not valid_csv.exists():
+        raise FileNotFoundError(
+            f"Expected annotation files not found.\n"
+            f"  Train CSV: {train_csv} (exists={train_csv.exists()})\n"
+            f"  Valid CSV: {valid_csv} (exists={valid_csv.exists()})"
+        )
     
     logger.info("Reading annotation files...")
     train_df = pd.read_csv(train_csv)
     valid_df = pd.read_csv(valid_csv)
     
-    # Modify image paths to remove train/valid prefixes
-    train_df['image_path'] = train_df['image_path'].str.replace('train/', '', regex=False)
-    valid_df['image_path'] = valid_df['image_path'].str.replace('valid/', '', regex=False)
+    # Update image paths to point to the new `all/` folder
+    train_df['image_path'] = train_df['image_path'].str.replace('train/', 'all/', regex=False)
+    valid_df['image_path'] = valid_df['image_path'].str.replace('valid/', 'all/', regex=False)
     
     # Combine annotations
     combined_df = pd.concat([train_df, valid_df], ignore_index=True)
@@ -51,7 +65,7 @@ def create_unsplit_dataset():
     
     logger.info(f"Combined dataset: {len(combined_df)} images")
     
-    # Copy images from train directory
+    # Copy images from the train directory
     train_dir = source_dir / "train"
     copied_count = 0
     
@@ -65,7 +79,7 @@ def create_unsplit_dataset():
                     copied_count += 1
         logger.info(f"Copied {copied_count} images from train directory")
     
-    # Copy images from valid directory
+    # Copy images from the valid directory
     valid_dir = source_dir / "valid"
     valid_copied_count = 0
     
@@ -83,7 +97,7 @@ def create_unsplit_dataset():
     logger.info(f"Total images copied: {total_copied}")
     
     # Save combined annotations
-    output_csv = target_dir / "all_anotaciones.csv"
+    output_csv = target_dir / "all_annotations.csv"
     combined_df.to_csv(output_csv, index=False)
     logger.info(f"Saved combined annotations to {output_csv}")
     
@@ -121,7 +135,7 @@ Character frequency (top 20):
         summary_content += f"  - '{char}': {count}\n"
     
     # Save summary
-    summary_file = target_dir / "dataset_summary.txt"
+    summary_file = target_dir / "dataset_summary_all.txt"
     with open(summary_file, 'w') as f:
         f.write(summary_content)
     

@@ -37,10 +37,10 @@ def get_queue_size_for_mode(offline_mode: bool, default_realtime_size: int = 3) 
         default_realtime_size: Queue size for real-time mode (default: 3)
         
     Returns:
-        Queue size (0 for unbounded in offline mode, limited size for real-time)
+        Queue size (large bounded for offline mode, limited size for real-time)
     """
     if offline_mode:
-        return 0  # Unbounded queue for offline mode
+        return 1000  # Large bounded queue for offline mode (prevents deadlocks)
     else:
         return default_realtime_size  # Small queue for real-time mode
 

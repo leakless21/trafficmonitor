@@ -15,6 +15,7 @@ from .services.text_recognition_service import text_recognition_process
 from .services.vehicle_counting_service import vehicle_counting_process
 from .services.visualization_service import visualization_process
 from .services.summary_service import summary_service_process
+from .services.event_fusion_service import event_fusion_process
 
 def main(config=None):
     # Ensure consistent multiprocessing start method across platforms (Linux default is 'fork')
@@ -209,7 +210,15 @@ def main(config=None):
     license_plate_detection_output_queue = mp.Queue(maxsize=queue_size)
     text_recognition_output_queue = mp.Queue(maxsize=queue_size)
     vehicle_counting_output_queue = mp.Queue(maxsize=queue_size)
-    # Dedicated queues to ensure the visualiser receives a *copy* of each message
+    
+    # Event Fusion Service queues
+    fusion_tracking_queue = mp.Queue(maxsize=queue_size)
+    fusion_plate_detection_queue = mp.Queue(maxsize=queue_size)
+    fusion_ocr_queue = mp.Queue(maxsize=queue_size)
+    fusion_counting_queue = mp.Queue(maxsize=queue_size)
+    fusion_output_queue = mp.Queue(maxsize=queue_size)  # Enriched messages to visualization
+    
+    # Legacy queues for backward compatibility (will be removed in future)
     vehicle_counting_vis_queue = mp.Queue(maxsize=queue_size)
     text_recognition_vis_queue = mp.Queue(maxsize=queue_size)
     visualization_input_queue = mp.Queue(maxsize=queue_size)
@@ -229,6 +238,18 @@ def main(config=None):
     lp_config["offline_mode"] = offline_mode
     ocr_config["offline_mode"] = offline_mode
     vc_config["offline_mode"] = offline_mode
+    
+    # Event Fusion Service configuration
+    fusion_config = config_dict.get("event_fusion", {})
+    fusion_config.update({
+        "service_name": "EventFusionService",
+        "loguru": loguru_config,
+        "offline_mode": offline_mode,
+        "ttl_sec": fusion_config.get("ttl_sec", 1.0),
+        "max_buffer_size": fusion_config.get("max_buffer_size", 1000),
+        "max_state_age_sec": fusion_config.get("max_state_age_sec", 5.0),
+        "max_frame_gap": fusion_config.get("max_frame_gap", 10)
+    })
 
     # Create process configurations
     process_configs = [
@@ -238,18 +259,25 @@ def main(config=None):
         ("LicensePlateDetectionService", license_plate_detection_process, (lp_config, license_plate_detection_input_queue, license_plate_detection_output_queue, shutdown_event)),
         ("TextRecognitionService", text_recognition_process, (ocr_config, license_plate_detection_output_queue, text_recognition_output_queue, shutdown_event)),
         ("VehicleCountingService", vehicle_counting_process, (vc_config, vehicle_counting_input_queue, vehicle_counting_output_queue, shutdown_event)),
-        ("EventDistributionService", event_distribution_process, (offline_mode, vehicle_tracking_output_queue, [license_plate_detection_input_queue, vehicle_counting_input_queue, visualization_input_queue, summary_tracking_queue], shutdown_event)),
-        ("VisualizationService", visualization_process, (vis_config, visualization_input_queue, text_recognition_vis_queue, vehicle_counting_vis_queue, shutdown_event)),
+        
+        # Event distribution to feed fusion service and legacy paths
+        ("TrackingDistributionService", event_distribution_process, (offline_mode, vehicle_tracking_output_queue, [license_plate_detection_input_queue, vehicle_counting_input_queue, fusion_tracking_queue, visualization_input_queue, summary_tracking_queue], shutdown_event)),
+        ("PlateDetectionDistributionService", event_distribution_process, (offline_mode, license_plate_detection_output_queue, [fusion_plate_detection_queue], shutdown_event)),
+        ("OCRDistributionService", event_distribution_process, (offline_mode, text_recognition_output_queue, [fusion_ocr_queue, text_recognition_vis_queue, summary_ocr_queue], shutdown_event)),
+        ("CountingDistributionService", event_distribution_process, (offline_mode, vehicle_counting_output_queue, [fusion_counting_queue, vehicle_counting_vis_queue, summary_count_queue], shutdown_event)),
+        
+        # Event Fusion Service (NEW)
+        ("EventFusionService", event_fusion_process, (fusion_config, fusion_tracking_queue, fusion_plate_detection_queue, fusion_ocr_queue, fusion_counting_queue, fusion_output_queue, shutdown_event)),
+        
+        # Visualization Service (using enriched messages from fusion service)
+        ("VisualizationService", visualization_process, (vis_config, fusion_output_queue, text_recognition_vis_queue, vehicle_counting_vis_queue, shutdown_event)),
     ]
     
     # Add summary service if enabled
     if summary_config.get("enabled", True):
-        # Add additional event distribution processes to send copies to summary service
-        process_configs.extend([
-            ("CountDistributionService", event_distribution_process, (offline_mode, vehicle_counting_output_queue, [summary_count_queue, vehicle_counting_vis_queue], shutdown_event)),
-            ("OCRDistributionService", event_distribution_process, (offline_mode, text_recognition_output_queue, [summary_ocr_queue, text_recognition_vis_queue], shutdown_event)),
+        process_configs.append(
             ("SummaryService", summary_service_process, (summary_config, summary_tracking_queue, summary_count_queue, summary_ocr_queue, shutdown_event))
-        ])
+        )
 
     # Start all processes
     processes = []
@@ -301,6 +329,7 @@ def main(config=None):
             license_plate_detection_output_queue, text_recognition_output_queue, vehicle_counting_output_queue,
             vehicle_counting_vis_queue, text_recognition_vis_queue,
             visualization_input_queue, license_plate_detection_input_queue, vehicle_counting_input_queue,
+            fusion_tracking_queue, fusion_plate_detection_queue, fusion_ocr_queue, fusion_counting_queue, fusion_output_queue,
             summary_tracking_queue, summary_count_queue, summary_ocr_queue
         ]
         
